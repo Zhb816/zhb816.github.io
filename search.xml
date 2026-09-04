@@ -22,9 +22,9 @@
       
         <tags>
             
-            <tag> VXLAN </tag>
-            
             <tag> IPSec </tag>
+            
+            <tag> VXLAN </tag>
             
             <tag> SD-WAN </tag>
             
