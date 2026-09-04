@@ -1,0 +1,1104 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="Linux 网络栈是内核里最复杂的子系统之一，从网卡收到一个包到应用程序读到数据，中间经过了几十个函数调用、多次内存拷贝、多个队列和调度点。理解这条路径，是做网络性能调优和排查网络问题的基础。这篇文章把接收和发送两条路径从里到外走一遍，再讲讲关键的性能优化技术。 一、核心数据结构1.1 sk_buff（socket buffer）sk_buff 是 Linux 网络栈的核心数据结构，一个 sk_b">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列">
+<meta property="og:url" content="https://zhb816.github.io/2026/07/30/linux-kernel-network-stack-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="Linux 网络栈是内核里最复杂的子系统之一，从网卡收到一个包到应用程序读到数据，中间经过了几十个函数调用、多次内存拷贝、多个队列和调度点。理解这条路径，是做网络性能调优和排查网络问题的基础。这篇文章把接收和发送两条路径从里到外走一遍，再讲讲关键的性能优化技术。 一、核心数据结构1.1 sk_buff（socket buffer）sk_buff 是 Linux 网络栈的核心数据结构，一个 sk_b">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-07-30T12:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T08:05:30.482Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="GRO">
+<meta property="article:tag" content="NAPI">
+<meta property="article:tag" content="RPS">
+<meta property="article:tag" content="sk_buff">
+<meta property="article:tag" content="内核网络">
+<meta property="article:tag" content="性能优化">
+<meta property="article:tag" content="软中断">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-07-30 20:00" pubdate>
+          2026年7月30日 晚上
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          11k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          89 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>Linux 网络栈是内核里最复杂的子系统之一，从网卡收到一个包到应用程序读到数据，中间经过了几十个函数调用、多次内存拷贝、多个队列和调度点。理解这条路径，是做网络性能调优和排查网络问题的基础。这篇文章把接收和发送两条路径从里到外走一遍，再讲讲关键的性能优化技术。</p>
+<h2 id="一、核心数据结构"><a href="#一、核心数据结构" class="headerlink" title="一、核心数据结构"></a>一、核心数据结构</h2><h3 id="1-1-sk-buff（socket-buffer）"><a href="#1-1-sk-buff（socket-buffer）" class="headerlink" title="1.1 sk_buff（socket buffer）"></a>1.1 sk_buff（socket buffer）</h3><p>sk_buff 是 Linux 网络栈的核心数据结构，一个 sk_buff 代表一个网络报文。它不是只存报文数据，而是包含了报文在协议栈各层的所有元信息。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br></pre></td><td class="code"><pre><code class="hljs c"><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">sk_buff</span> &#123;</span><br>    <span class="hljs-comment">// 链表指针，用于把 skb 挂到各种队列上</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">sk_buff</span> *<span class="hljs-title">next</span>;</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">sk_buff</span> *<span class="hljs-title">prev</span>;</span><br><br>    <span class="hljs-comment">// 指向所属的 socket（如果有）</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">sock</span> *<span class="hljs-title">sk</span>;</span><br><br>    <span class="hljs-comment">// 指向 net_device，报文从哪个网卡来/要从哪个网卡出</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">net_device</span> *<span class="hljs-title">dev</span>;</span><br><br>    <span class="hljs-comment">// 协议栈各层的头部指针</span><br>    <span class="hljs-comment">// 这些指针在报文逐层解析时被设置</span><br>    <span class="hljs-class"><span class="hljs-keyword">union</span> &#123;</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ethhdr</span> *<span class="hljs-title">ethhdr</span>;</span>     <span class="hljs-comment">// 二层头</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">iphdr</span> *<span class="hljs-title">iphdr</span>;</span>       <span class="hljs-comment">// 三层头(IPv4)</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ipv6hdr</span> *<span class="hljs-title">ipv6hdr</span>;</span>   <span class="hljs-comment">// 三层头(IPv6)</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">tcphdr</span> *<span class="hljs-title">th</span>;</span>         <span class="hljs-comment">// 四层头(TCP)</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">udphdr</span> *<span class="hljs-title">uh</span>;</span>         <span class="hljs-comment">// 四层头(UDP)</span><br>        <span class="hljs-comment">// ...</span><br>    &#125; h;<br><br>    <span class="hljs-comment">// 传输层头部指针（另一个视图）</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *transport_header;<br>    <span class="hljs-comment">// 网络层头部指针</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *network_header;<br>    <span class="hljs-comment">// 链路层头部指针</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *mac_header;<br><br>    <span class="hljs-comment">// 数据指针：head 到 end 是整个缓冲区</span><br>    <span class="hljs-comment">// data 到 tail 是当前有效数据</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *head;<br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *data;<br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *tail;<br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> *end;<br><br>    <span class="hljs-comment">// 报文长度（data 到 tail 的长度）</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> len;<br>    <span class="hljs-comment">// 数据区长度（head 到 end 的长度）</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> data_len;<br>    <span class="hljs-comment">// 分片链表（GRO/GSO 合并的大包）</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">sk_buff</span> *<span class="hljs-title">frag_list</span>;</span><br>    <span class="hljs-comment">// 分页数据（分散聚集 I/O，skb 数据可以存在多个 page 里）</span><br>    <span class="hljs-type">skb_frag_t</span> frags[MAX_SKB_FRAGS];<br><br>    <span class="hljs-comment">// 标记位：比如是否是克隆、是否有校验和、是否需要分片等</span><br>    __u8 cloned:<span class="hljs-number">1</span>;<br>    __u8 nohdr:<span class="hljs-number">1</span>;<br>    <span class="hljs-comment">// ...</span><br><br>    <span class="hljs-comment">// 优先级、标记、协议等</span><br>    __u8 priority;<br>    __be16 protocol;<br>    <span class="hljs-comment">// ...</span><br><br>    <span class="hljs-comment">// 时间戳</span><br>    <span class="hljs-type">ktime_t</span> tstamp;<br><br>    <span class="hljs-comment">// 哈希值（用于 RPS/RFS 等）</span><br>    __u32 hash;<br>    <span class="hljs-comment">// ...</span><br>&#125;;<br></code></pre></td></tr></table></figure>
+
+<p>关键点：</p>
+<ul>
+<li><strong>head&#x2F;data&#x2F;tail&#x2F;end 四个指针</strong>：head 和 end 是缓冲区的边界，data 和 tail 是当前有效数据的边界。协议栈在头部添加数据时，data 指针往前移（push）；在尾部添加数据时，tail 指针往后移（put）。</li>
+<li><strong>frags 分页</strong>：大报文的数据可以分散在多个物理页里，不需要连续内存，提高内存利用率和拷贝效率（零拷贝的基础）。</li>
+<li><strong>frag_list 分片链表</strong>：GRO（接收合并）把多个小包合并成一个大包时，用 frag_list 链接，不需要实际拷贝数据。</li>
+<li><strong>克隆（clone）</strong>：多个 skb 可以共享同一份数据（比如多播、连接跟踪），克隆时只复制 skb 结构体，不复制数据，用引用计数管理。</li>
+</ul>
+<h3 id="1-2-net-device"><a href="#1-2-net-device" class="headerlink" title="1.2 net_device"></a>1.2 net_device</h3><p>net_device 代表一个网络设备（物理网卡或虚拟网卡），包含了网卡的所有配置和状态：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><code class="hljs c"><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">net_device</span> &#123;</span><br>    <span class="hljs-type">char</span> name[IFNAMSIZ];        <span class="hljs-comment">// 网卡名，如 &quot;eth0&quot;</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> flags;          <span class="hljs-comment">// 标志位，如 IFF_UP, IFF_PROMISC</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> mtu;            <span class="hljs-comment">// MTU</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> dev_addr[MAX_ADDR_LEN];  <span class="hljs-comment">// MAC 地址</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">char</span> broadcast[MAX_ADDR_LEN]; <span class="hljs-comment">// 广播地址</span><br><br>    <span class="hljs-comment">// 网卡操作函数表（驱动实现）</span><br>    <span class="hljs-type">const</span> <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">net_device_ops</span> *<span class="hljs-title">netdev_ops</span>;</span><br>    <span class="hljs-comment">// ethtool 操作（用于查询和设置网卡参数）</span><br>    <span class="hljs-type">const</span> <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ethtool_ops</span> *<span class="hljs-title">ethtool_ops</span>;</span><br><br>    <span class="hljs-comment">// NAPI 结构（用于中断合并和轮询收包）</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">napi_struct</span> <span class="hljs-title">napi</span>;</span><br><br>    <span class="hljs-comment">// 接收队列（多队列网卡有多个 RX queue）</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">netdev_rx_queue</span> *_<span class="hljs-title">rx</span>;</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> num_rx_queues;<br>    <span class="hljs-comment">// 发送队列</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">netdev_queue</span> *_<span class="hljs-title">tx</span>;</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">int</span> num_tx_queues;<br><br>    <span class="hljs-comment">// 接口索引，全局唯一</span><br>    <span class="hljs-type">int</span> ifindex;<br>    <span class="hljs-comment">// ...</span><br>&#125;;<br></code></pre></td></tr></table></figure>
+
+<h3 id="1-3-NAPI（New-API）"><a href="#1-3-NAPI（New-API）" class="headerlink" title="1.3 NAPI（New API）"></a>1.3 NAPI（New API）</h3><p>NAPI 是 Linux 网络栈的中断处理机制，核心思想是<strong>中断 + 轮询</strong>：</p>
+<ul>
+<li>报文量少时：用中断，每个包触发一次中断，延迟低</li>
+<li>报文量多时：中断触发后，关闭中断，进入轮询模式，一次性处理多个包，减少中断开销</li>
+</ul>
+<p>NAPI 结构里有一个 poll 函数指针和一个待处理报文的链表（gro_list 或 sk_buff_head），驱动在 poll 函数里从网卡的 RX ring 里取包。</p>
+<h2 id="二、接收路径（RX-Path）"><a href="#二、接收路径（RX-Path）" class="headerlink" title="二、接收路径（RX Path）"></a>二、接收路径（RX Path）</h2><p>一个报文从网卡到应用程序的完整路径：</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><code class="hljs dns">网卡收到报文<br>    │<br>    ▼<br>DMA 把报文写到内存（RX ring buffer）<br>    │<br>    ▼<br>网卡触发硬件中断（hard IRQ）<br>    │<br>    ▼<br>中断处理函数：调度 NAPI（napi_schedule），关闭中断<br>    │<br>    ▼<br>软中断（NET_RX_SOFTIRQ）：调用 NAPI poll 函数<br>    │<br>    ▼<br>驱动 poll：从 RX ring 取包，构建 sk_buff<br>    │<br>    ▼<br>GRO（Generic Receive Offload）：合并小包<br>    │<br>    ▼<br>netif_receive_skb<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span>：协议栈入口<br>    │<br>    ├──► 抓包点（tcpdump、AF_PACKET）<br>    │<br>    ▼<br>二层处理：VLAN、桥接（bridge）、MAC VLAN<br>    │<br>    ▼<br>三层处理：ip_rcv<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span> → 路由查找 → ip_local_deliver<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span> / ip_forward<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span><br>    │<br>    ├──► 转发路径：ip_forward<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span> → 出网卡<br>    │<br>    ▼<br>四层处理：tcp_v4_rcv<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span> / udp_rcv<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span><br>    │<br>    ▼<br>查找 socket（通过四元组哈希）<br>    │<br>    ▼<br>放入 socket 接收队列（sk_receive_queue）<br>    │<br>    ▼<br>唤醒应用程序（epoll/select/阻塞 read）<br>    │<br>    ▼<br>应用程序 read/recvfrom 读取数据<br></code></pre></td></tr></table></figure>
+
+<p>下面逐层详细拆解。</p>
+<h3 id="2-1-网卡和-DMA"><a href="#2-1-网卡和-DMA" class="headerlink" title="2.1 网卡和 DMA"></a>2.1 网卡和 DMA</h3><p>现代网卡都支持 DMA（Direct Memory Access），网卡收到报文后，不经过 CPU，直接通过 DMA 把报文数据写到内存里的 RX ring buffer。</p>
+<p>RX ring 是一个环形缓冲区，由驱动初始化，每个元素是一个 sk_buff（或 page）的描述符，包含了数据的物理地址（DMA 地址）。网卡收到报文后，找到 ring 里的下一个空闲描述符，把数据 DMA 到对应的内存，然后更新描述符状态（标记为已使用），触发中断通知 CPU。</p>
+<figure class="highlight tap"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs tap">RX Ring Buffer（环形队列）<br>┌────┬────┬────┬────┬────┬────┐<br>│<span class="hljs-number"> 0 </span> │<span class="hljs-number"> 1 </span> │<span class="hljs-number"> 2 </span> │<span class="hljs-number"> 3 </span> │<span class="hljs-number"> 4 </span> │<span class="hljs-number"> 5 </span> │  ← 描述符数组<br>└────┴────┴────┴────┴────┴────┘<br>  ↑                    ↑<br>  │                    │<br>head(已处理)        tail(已接收，待处理)<br></code></pre></td></tr></table></figure>
+
+<p>多队列网卡有多个 RX ring，每个 ring 对应一个中断号，可以绑定到不同的 CPU 核心，实现并行收包。网卡通过 RSS（Receive Side Scaling）把不同的流（基于四元组哈希）分配到不同的 ring，保证同一条流的包始终到同一个 ring（不乱序）。</p>
+<h3 id="2-2-硬中断和-NAPI-调度"><a href="#2-2-硬中断和-NAPI-调度" class="headerlink" title="2.2 硬中断和 NAPI 调度"></a>2.2 硬中断和 NAPI 调度</h3><p>网卡触发硬中断后，CPU 跳到中断向量表，执行驱动注册的中断处理函数。</p>
+<p>中断处理函数做的事情非常少（硬中断上下文不能阻塞，要尽快返回）：</p>
+<ol>
+<li>关闭网卡的接收中断（防止中断风暴）</li>
+<li>调用 <code>napi_schedule(&amp;napi)</code>，把 NAPI 结构加入到当前 CPU 的 <code>softnet_data</code> 的 <code>poll_list</code> 链表里</li>
+<li>触发 <code>NET_RX_SOFTIRQ</code> 软中断</li>
+</ol>
+<p>然后硬中断返回，CPU 回到被中断的上下文。</p>
+<h3 id="2-3-软中断和-NAPI-poll"><a href="#2-3-软中断和-NAPI-poll" class="headerlink" title="2.3 软中断和 NAPI poll"></a>2.3 软中断和 NAPI poll</h3><p>软中断（softirq）是 Linux 内核的一种延迟执行机制，<code>NET_RX_SOFTIRQ</code> 的处理函数是 <code>net_rx_action()</code>。</p>
+<p><code>net_rx_action()</code> 做的事情：</p>
+<ol>
+<li>遍历当前 CPU 的 <code>poll_list</code> 链表（所有被调度的 NAPI 结构）</li>
+<li>对每个 NAPI，调用它的 <code>poll</code> 函数（驱动实现）</li>
+<li>poll 函数从网卡的 RX ring 里取包，构建 sk_buff，交给协议栈</li>
+<li>poll 函数有预算限制（<code>netdev_budget</code>，默认 300 个包，或 2ms 时间限制），防止软中断占满 CPU</li>
+<li>如果 poll 函数把 ring 里的包都取完了，重新开启网卡中断，把 NAPI 从 poll_list 移除</li>
+<li>如果还有包没处理完（预算用完了），NAPI 留在 poll_list，下一次软中断继续处理</li>
+</ol>
+<p>驱动的 poll 函数（以 igb 网卡为例）大致逻辑：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><code class="hljs c"><span class="hljs-type">static</span> <span class="hljs-type">int</span> <span class="hljs-title function_">igb_poll</span><span class="hljs-params">(<span class="hljs-keyword">struct</span> napi_struct *napi, <span class="hljs-type">int</span> budget)</span> &#123;<br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">igb_ring</span> *<span class="hljs-title">rx_ring</span> =</span> container_of(napi, ...);<br>    <span class="hljs-type">int</span> work_done = <span class="hljs-number">0</span>;<br><br>    <span class="hljs-keyword">while</span> (work_done &lt; budget) &#123;<br>        <span class="hljs-comment">// 从 RX ring 取下一个描述符</span><br>        <span class="hljs-class"><span class="hljs-keyword">union</span> <span class="hljs-title">e1000_adv_rx_desc</span> *<span class="hljs-title">rx_desc</span> =</span> IGB_RX_DESC(rx_ring, i);<br><br>        <span class="hljs-comment">// 检查描述符是否有数据（DD 位）</span><br>        <span class="hljs-keyword">if</span> (!(rx_desc-&gt;wb.upper.status_error &amp; E1000_RXD_STAT_DD))<br>            <span class="hljs-keyword">break</span>;  <span class="hljs-comment">// 没有更多数据</span><br><br>        <span class="hljs-comment">// 构建 sk_buff</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">sk_buff</span> *<span class="hljs-title">skb</span> =</span> napi_gro_receive(&amp;rx_ring-&gt;napi, skb);<br><br>        <span class="hljs-comment">// 给 ring 补充新的 skb（用于下一次 DMA）</span><br>        igb_alloc_rx_buffers(rx_ring, <span class="hljs-number">1</span>);<br><br>        work_done++;<br>    &#125;<br><br>    <span class="hljs-comment">// 如果 ring 空了，返回 budget（表示可以重新开中断）</span><br>    <span class="hljs-keyword">if</span> (work_done &lt; budget) &#123;<br>        napi_complete(napi);  <span class="hljs-comment">// 完成 NAPI，重新开中断</span><br>        igb_irq_enable(adapter);<br>    &#125;<br><br>    <span class="hljs-keyword">return</span> work_done;<br>&#125;<br></code></pre></td></tr></table></figure>
+
+<h3 id="2-4-GRO（Generic-Receive-Offload）"><a href="#2-4-GRO（Generic-Receive-Offload）" class="headerlink" title="2.4 GRO（Generic Receive Offload）"></a>2.4 GRO（Generic Receive Offload）</h3><p><code>napi_gro_receive()</code> 会调用 GRO 逻辑，把多个属于同一条流的小包合并成一个大包，减少协议栈处理的报文数量。</p>
+<p>GRO 的合并条件：</p>
+<ul>
+<li>同一条流（四元组相同）</li>
+<li>序号连续（TCP 序号连续）</li>
+<li>报文大小不超过 64K（或 MTU 的整数倍）</li>
+<li>标志位兼容（没有 FIN&#x2F;RST 等）</li>
+</ul>
+<p>合并后，多个小包变成一个大 skb（用 frag_list 链接，不实际拷贝数据），协议栈只需要处理一个大包，处理效率大幅提升。</p>
+<p>GRO 是硬件 TSO&#x2F;LRO 的软件替代，在不支持硬件 LRO 的网卡上也能获得类似效果。</p>
+<h3 id="2-5-netif-receive-skb——协议栈入口"><a href="#2-5-netif-receive-skb——协议栈入口" class="headerlink" title="2.5 netif_receive_skb——协议栈入口"></a>2.5 netif_receive_skb——协议栈入口</h3><p><code>netif_receive_skb()</code> 是报文进入内核协议栈的入口函数。它做的事情：</p>
+<ol>
+<li><strong>设置 skb 的时间戳</strong>（如果开启了硬件时间戳）</li>
+<li><strong>遍历 ptype_all 链表</strong>：AF_PACKET 类型的 socket（tcpdump 就是用这个），所有报文都会先经过这里，这就是抓包的原理</li>
+<li><strong>VLAN 处理</strong>：如果是 VLAN 报文，剥离 VLAN 头，找到对应的 VLAN 设备</li>
+<li><strong>桥接处理</strong>：如果接口加入了网桥（bridge），报文进入网桥处理逻辑（学习 MAC、转发&#x2F;泛洪）</li>
+<li><strong>根据二层协议类型分发</strong>：<ul>
+<li>ETH_P_IP → <code>ip_rcv()</code></li>
+<li>ETH_P_IPV6 → <code>ipv6_rcv()</code></li>
+<li>ETH_P_ARP → <code>arp_rcv()</code></li>
+<li>其他 → 对应的协议处理函数</li>
+</ul>
+</li>
+</ol>
+<h3 id="2-6-三层处理（IPv4）"><a href="#2-6-三层处理（IPv4）" class="headerlink" title="2.6 三层处理（IPv4）"></a>2.6 三层处理（IPv4）</h3><p><code>ip_rcv()</code> 做的事情：</p>
+<ol>
+<li>校验 IP 头（版本、长度、校验和）</li>
+<li>检查报文长度是否合法</li>
+<li>处理 IP 选项（严格源路由、时间戳等）</li>
+<li>调用 <code>NF_INET_PRE_ROUTING</code> 钩子（Netfilter，iptables 的 raw&#x2F;mangle 表在这里）</li>
+<li>调用 <code>ip_rcv_finish()</code> → <code>ip_route_input_noref()</code> 做路由查找</li>
+</ol>
+<p>路由查找的结果决定报文的走向：</p>
+<ul>
+<li><strong>本地交付</strong>（目的 IP 是本机）→ <code>ip_local_deliver()</code></li>
+<li><strong>转发</strong>（目的 IP 不是本机，本机是路由器）→ <code>ip_forward()</code></li>
+<li><strong>组播&#x2F;广播</strong> → 特殊处理</li>
+</ul>
+<p><code>ip_local_deliver()</code>：</p>
+<ol>
+<li>处理 IP 分片重组（如果报文是分片的，在这里等待所有分片到达后重组）</li>
+<li>调用 <code>NF_INET_LOCAL_IN</code> 钩子（iptables 的 filter INPUT 表）</li>
+<li>根据四层协议分发：<ul>
+<li>IPPROTO_TCP → <code>tcp_v4_rcv()</code></li>
+<li>IPPROTO_UDP → <code>udp_rcv()</code></li>
+<li>IPPROTO_ICMP → <code>icmp_rcv()</code></li>
+<li>其他 →  raw socket 或丢弃</li>
+</ul>
+</li>
+</ol>
+<h3 id="2-7-四层处理（TCP）"><a href="#2-7-四层处理（TCP）" class="headerlink" title="2.7 四层处理（TCP）"></a>2.7 四层处理（TCP）</h3><p><code>tcp_v4_rcv()</code> 做的事情：</p>
+<ol>
+<li>校验 TCP 头和校验和</li>
+<li>查找 socket：通过四元组（源IP、源端口、目的IP、目的端口）在 <code>tcp_hashinfo</code> 的哈希表里查找<ul>
+<li>先查 established 哈希表（已建立连接的 socket）</li>
+<li>没找到再查 listening 哈希表（监听 socket，处理 SYN）</li>
+</ul>
+</li>
+<li>如果找到 socket，调用 <code>tcp_v4_do_rcv()</code> → 处理 TCP 状态机：<ul>
+<li>SYN 包：建立连接，分配新的 socket（child socket），放入 accept 队列</li>
+<li>数据包：放入 socket 的接收队列，更新 TCP 序号，发送 ACK</li>
+<li>FIN 包：关闭连接</li>
+<li>RST 包：重置连接</li>
+</ul>
+</li>
+<li>如果没找到 socket：发送 RST 复位（端口不可达）</li>
+</ol>
+<h3 id="2-8-Socket-接收队列和唤醒"><a href="#2-8-Socket-接收队列和唤醒" class="headerlink" title="2.8 Socket 接收队列和唤醒"></a>2.8 Socket 接收队列和唤醒</h3><p>TCP 数据最终被放入 socket 的 <code>sk_receive_queue</code>（接收队列）。然后：</p>
+<ol>
+<li>如果 socket 是非阻塞的，设置 EPOLLIN 事件，通知 epoll</li>
+<li>如果 socket 是阻塞的，唤醒在 <code>wait_for_packet()</code> 上睡眠的进程</li>
+<li>进程被唤醒后，调用 <code>read()</code>&#x2F;<code>recv()</code> 从接收队列里取数据，从内核空间拷贝到用户空间</li>
+</ol>
+<h2 id="三、发送路径（TX-Path）"><a href="#三、发送路径（TX-Path）" class="headerlink" title="三、发送路径（TX Path）"></a>三、发送路径（TX Path）</h2><p>发送路径比接收路径简单一些：</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><code class="hljs dns">应用程序 write/send<br>    │<br>    ▼<br>系统调用：sendto<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span> → sock_sendmsg<span class="hljs-punctuation">(</span><span class="hljs-punctuation">)</span><br>    │<br>    ▼<br>TCP/UDP 层：构建 TCP/UDP 头，分配 sk_buff<br>    │<br>    ▼<br>IP 层：构建 IP 头，路由查找，决定出接口<br>    │<br>    ▼<br>邻居子系统：ARP 查找下一跳 MAC<br>    │<br>    ▼<br>二层：构建以太网头<br>    │<br>    ▼<br>qdisc（队列规则）：流量控制、整形、调度<br>    │<br>    ▼<br>驱动发送函数：把 skb 放入 TX ring<br>    │<br>    ▼<br>DMA：网卡从 TX ring 取数据发送<br>    │<br>    ▼<br>发送完成中断：释放 skb<br></code></pre></td></tr></table></figure>
+
+<h3 id="3-1-应用层到传输层"><a href="#3-1-应用层到传输层" class="headerlink" title="3.1 应用层到传输层"></a>3.1 应用层到传输层</h3><p>应用调用 <code>write()</code>&#x2F;<code>send()</code>，数据从用户空间拷贝到内核空间（<code>copy_from_user</code>），然后：</p>
+<ul>
+<li>TCP：<code>tcp_sendmsg()</code> 把数据放入 socket 的发送缓冲区（<code>sk_write_queue</code>），受发送窗口和拥塞窗口控制，可能不会立即发送（Nagle 算法、延迟 ACK 等）</li>
+<li>UDP：<code>udp_sendmsg()</code> 直接构建 UDP 报文，立即发送（无连接，不保证可靠）</li>
+</ul>
+<p>TCP 的发送逻辑很复杂，涉及：</p>
+<ul>
+<li>滑动窗口（接收窗口 rwnd + 拥塞窗口 cwnd）</li>
+<li>拥塞控制（慢启动、拥塞避免、快速重传、快速恢复）</li>
+<li>Nagle 算法（小包合并，减少小包数量）</li>
+<li>延迟 ACK（等一段时间或攒几个包再回 ACK）</li>
+<li>TSO&#x2F;GSO（大段卸载，把大包拆成 MTU 大小的包，由硬件或软件完成）</li>
+</ul>
+<h3 id="3-2-IP-层和邻居子系统"><a href="#3-2-IP-层和邻居子系统" class="headerlink" title="3.2 IP 层和邻居子系统"></a>3.2 IP 层和邻居子系统</h3><p>传输层构建好 skb 后，调用 <code>ip_queue_xmit()</code>（TCP）或 <code>ip_send_skb()</code>（UDP）：</p>
+<ol>
+<li>构建 IP 头（源IP、目的IP、协议、TTL等）</li>
+<li>路由查找（确定出接口和下一跳）</li>
+<li>处理 IP 选项</li>
+<li>调用 <code>NF_INET_LOCAL_OUT</code> 钩子（iptables OUTPUT 链）</li>
+<li>调用 <code>ip_output()</code> → <code>ip_finish_output()</code> → <code>ip_finish_output2()</code></li>
+</ol>
+<p><code>ip_finish_output2()</code> 进入邻居子系统（neighbour），查找下一跳的 MAC 地址：</p>
+<ol>
+<li>查 ARP 缓存（neighbour table）</li>
+<li>找到：获取 MAC，构建以太网头</li>
+<li>没找到：发送 ARP 请求，缓存 skb，等 ARP 回应后再发送</li>
+</ol>
+<h3 id="3-3-qdisc（队列规则）"><a href="#3-3-qdisc（队列规则）" class="headerlink" title="3.3 qdisc（队列规则）"></a>3.3 qdisc（队列规则）</h3><p>报文到达 <code>dev_queue_xmit()</code>，进入 qdisc（queueing discipline，队列规则）层。</p>
+<p>qdisc 是 Linux 流量控制的核心，每个网卡的发送队列都有一个 qdisc，默认是 <code>pfifo_fast</code>（简单的先进先出，按 TOS 分三个优先级队列）。</p>
+<p>qdisc 可以做：</p>
+<ul>
+<li><strong>流量整形（Shaping）</strong>：限制发送速率（TBF、HTB）</li>
+<li><strong>调度（Scheduling）</strong>：按优先级调度（pfifo_fast、PRIO、DRR）</li>
+<li><strong>分类（Classification）</strong>：把报文分到不同的类（u32、fw、basic）</li>
+<li><strong>主动队列管理（AQM）</strong>：队列满时主动丢包，避免全局同步（RED、CoDel、FQ_Codel）</li>
+</ul>
+<p>默认的 <code>pfifo_fast</code> 很简单，按 TOS 把报文分到三个 band，高优先级 band 先发。生产环境里高带宽网卡推荐用 <code>fq</code>（Fair Queueing）或 <code>mq</code>（多队列）+ <code>fq_codel</code>。</p>
+<p>qdisc 入队后，如果队列没满，报文被缓存，等待发送；如果队列满了，报文被丢弃（tail drop）。</p>
+<h3 id="3-4-驱动发送和-DMA"><a href="#3-4-驱动发送和-DMA" class="headerlink" title="3.4 驱动发送和 DMA"></a>3.4 驱动发送和 DMA</h3><p>qdisc 出队后，调用驱动的 <code>ndo_start_xmit()</code> 函数（net_device_ops 里的函数指针）：</p>
+<ol>
+<li>驱动把 skb 的信息（数据地址、长度）写入 TX ring 的下一个描述符</li>
+<li>更新 TX ring 的 tail 指针</li>
+<li>网卡通过 DMA 从内存读取数据，发送到网络</li>
+<li>发送完成后，网卡触发发送完成中断，驱动释放 skb（<code>dev_kfree_skb</code>）</li>
+</ol>
+<p>多队列网卡有多个 TX ring，内核通过 XPS（Transmit Packet Steering）把不同的流分配到不同的 TX queue，通常和接收的 CPU 对应（减少缓存失效）。</p>
+<h2 id="四、关键性能优化技术"><a href="#四、关键性能优化技术" class="headerlink" title="四、关键性能优化技术"></a>四、关键性能优化技术</h2><h3 id="4-1-RPS（Receive-Packet-Steering）"><a href="#4-1-RPS（Receive-Packet-Steering）" class="headerlink" title="4.1 RPS（Receive Packet Steering）"></a>4.1 RPS（Receive Packet Steering）</h3><p>RPS 是软件版的 RSS，在不支持多队列的网卡上，把报文在软中断里分发到不同的 CPU 处理。</p>
+<p>原理：NAPI poll 取到包后，计算报文的哈希值（四元组哈希），根据哈希把报文放到目标 CPU 的 <code>backlog</code> 队列里，触发目标 CPU 的 <code>NET_RX_SOFTIRQ</code>，由目标 CPU 继续处理协议栈。</p>
+<p>RPS 可以把协议栈处理分散到多个 CPU，避免单个 CPU 成为瓶颈。但 RPS 有跨 CPU 的队列开销，不如硬件多队列（RSS）效率高。</p>
+<h3 id="4-2-RFS（Receive-Flow-Steering）"><a href="#4-2-RFS（Receive-Flow-Steering）" class="headerlink" title="4.2 RFS（Receive Flow Steering）"></a>4.2 RFS（Receive Flow Steering）</h3><p>RFS 是 RPS 的增强版，RPS 只根据哈希选 CPU，RFS 会根据应用程序在哪个 CPU 上运行来选 CPU，让报文处理的 CPU 和应用运行的 CPU 尽量一致，提高 CPU 缓存命中率。</p>
+<p>RFS 需要配合 <code>rps_sock_flow_entries</code> 和每个队列的 <code>rps_flow_cnt</code> 配置。</p>
+<h3 id="4-3-XPS（Transmit-Packet-Steering）"><a href="#4-3-XPS（Transmit-Packet-Steering）" class="headerlink" title="4.3 XPS（Transmit Packet Steering）"></a>4.3 XPS（Transmit Packet Steering）</h3><p>XPS 把发送队列和 CPU 绑定，某个 CPU 上的应用发送的报文，始终从同一个 TX queue 发出，减少锁竞争和缓存失效。</p>
+<h3 id="4-4-繁忙轮询（Busy-Poll）"><a href="#4-4-繁忙轮询（Busy-Poll）" class="headerlink" title="4.4 繁忙轮询（Busy Poll）"></a>4.4 繁忙轮询（Busy Poll）</h3><p>默认情况下，应用阻塞在 <code>read()</code> 上，等报文到达后被唤醒。繁忙轮询模式下，应用在 <code>read()</code> 里主动轮询网卡的接收队列，不睡眠，延迟更低（但消耗 CPU）。</p>
+<p>开启方式：</p>
+<ul>
+<li>socket 级别：<code>setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, &amp;usecs, sizeof(usecs))</code></li>
+<li>全局：<code>echo 50 &gt; /proc/sys/net/core/busy_poll</code>（微秒）</li>
+</ul>
+<p>适合低延迟场景（高频交易、实时游戏），但会消耗大量 CPU，不适合高吞吐场景。</p>
+<h3 id="4-5-GRO-GSO-TSO-LRO"><a href="#4-5-GRO-GSO-TSO-LRO" class="headerlink" title="4.5 GRO&#x2F;GSO&#x2F;TSO&#x2F;LRO"></a>4.5 GRO&#x2F;GSO&#x2F;TSO&#x2F;LRO</h3><p>这些都是大包合并&#x2F;拆分技术，减少协议栈处理的报文数量：</p>
+<ul>
+<li><strong>GRO（Generic Receive Offload）</strong>：接收端软件合并小包，前面讲过</li>
+<li><strong>LRO（Large Receive Offload）</strong>：接收端硬件合并小包，网卡硬件完成，比 GRO 快，但可能违反 TCP 规范（合并时不检查序号），在路由器&#x2F;网关上不能用</li>
+<li><strong>GSO（Generic Segmentation Offload）</strong>：发送端软件拆分大包，协议栈处理一个大包，到驱动前再拆成 MTU 大小的包</li>
+<li><strong>TSO（TCP Segmentation Offload）</strong>：发送端硬件拆分大包，网卡硬件完成 TCP 分段，比 GSO 快，减轻 CPU 负担</li>
+</ul>
+<p>查看网卡是否支持 TSO&#x2F;LRO：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs bash">ethtool -k eth0<br><span class="hljs-comment"># 输出里的 tcp-segmentation-offload、large-receive-offload 等</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="4-6-网卡多队列和中断绑定"><a href="#4-6-网卡多队列和中断绑定" class="headerlink" title="4.6 网卡多队列和中断绑定"></a>4.6 网卡多队列和中断绑定</h3><p>高带宽场景下，单 CPU 处理中断和协议栈会成为瓶颈。多队列网卡把接收和发送分散到多个队列，每个队列绑定一个中断，中断可以绑定到不同的 CPU 核心。</p>
+<p>查看网卡队列：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs bash">ethtool -l eth0<br><span class="hljs-comment"># 显示当前的 RX/TX 队列数</span><br></code></pre></td></tr></table></figure>
+
+<p>调整队列数：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">ethtool -L eth0 combined 8  <span class="hljs-comment"># 设置8个队列</span><br></code></pre></td></tr></table></figure>
+
+<p>中断绑定（通过 <code>/proc/irq/&lt;irq_num&gt;/smp_affinity</code> 设置中断的 CPU 亲和性）：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 查看网卡中断号</span><br><span class="hljs-built_in">cat</span> /proc/interrupts | grep eth0<br><span class="hljs-comment"># 把中断绑定到 CPU 0</span><br><span class="hljs-built_in">echo</span> 1 &gt; /proc/irq/&lt;irq_num&gt;/smp_affinity<br></code></pre></td></tr></table></figure>
+
+<p>最佳实践：每个 RX 队列绑定一个独立的 CPU 核心，不要和其他中断共享 CPU，开启 RPS&#x2F;RFS 做进一步优化。</p>
+<h3 id="4-7-内核旁路（Kernel-Bypass）"><a href="#4-7-内核旁路（Kernel-Bypass）" class="headerlink" title="4.7 内核旁路（Kernel Bypass）"></a>4.7 内核旁路（Kernel Bypass）</h3><p>对于极致性能场景（10G&#x2F;25G&#x2F;100G 线速处理），内核网络栈的开销仍然太大（中断、软中断、内存拷贝、协议栈处理），需要内核旁路技术：</p>
+<ul>
+<li><strong>DPDK（Data Plane Development Kit）</strong>：用户态驱动，直接操作网卡寄存器，绕过整个内核网络栈，在用户态收包发包。性能极高（线速），但需要独占网卡和 CPU，不能和内核网络栈共存。</li>
+<li><strong>XDP（eXpress Data Path）</strong>：前面讲过，在网卡驱动层、协议栈之前用 eBPF 程序处理报文，不需要完全旁路内核，可以和内核网络栈共存（XDP_PASS 把包上送协议栈）。</li>
+<li><strong>Netmap</strong>：类似 DPDK 的用户态网络框架，用共享内存的方式在用户态和网卡之间传递报文。</li>
+<li><strong>RDMA（Remote Direct Memory Access）</strong>：远程直接内存访问，绕过 CPU 和内核，网卡直接读写对端内存，延迟极低（微秒级），用于高性能计算和存储网络。</li>
+</ul>
+<h2 id="五、常见网络问题排查思路"><a href="#五、常见网络问题排查思路" class="headerlink" title="五、常见网络问题排查思路"></a>五、常见网络问题排查思路</h2><p>理解了网络栈路径，排查问题时就能按路径定位：</p>
+<ol>
+<li><strong>网卡层</strong>：<code>ethtool -S eth0</code> 看网卡计数器（rx_dropped、tx_dropped、errors），<code>ethtool -i eth0</code> 看驱动版本，<code>dmesg</code> 看网卡报错</li>
+<li><strong>中断层</strong>：<code>cat /proc/interrupts</code> 看中断分布是否均匀，<code>top</code> 看软中断 CPU 使用率（si 列）</li>
+<li><strong>协议栈层</strong>：<code>netstat -s</code> 看协议统计（TCP 重传、丢包、连接失败），<code>ss -ti</code> 看连接的详细状态（cwnd、rtt、重传）</li>
+<li><strong>Socket 层</strong>：<code>ss -lntp</code> 看监听队列（Recv-Q、Send-Q），接收队列满说明应用处理不过来</li>
+<li><strong>qdisc 层</strong>：<code>tc -s qdisc show dev eth0</code> 看队列丢包数，<code>dropped</code> 列非零说明发送队列满了</li>
+<li><strong>抓包</strong>：<code>tcpdump</code> 在各个点抓包对比，看报文在哪一层丢了</li>
+</ol>
+<h2 id="六、总结"><a href="#六、总结" class="headerlink" title="六、总结"></a>六、总结</h2><p>Linux 内核网络栈的接收路径核心是：</p>
+<ol>
+<li><strong>DMA + 中断</strong>：网卡直接写内存，中断通知 CPU</li>
+<li><strong>NAPI</strong>：中断 + 轮询，高负载下减少中断开销</li>
+<li><strong>GRO</strong>：合并小包，减少协议栈处理量</li>
+<li><strong>协议栈逐层处理</strong>：二层 → 三层 → 四层 → socket</li>
+<li><strong>Socket 队列</strong>：数据放入接收队列，唤醒应用</li>
+</ol>
+<p>发送路径核心是：</p>
+<ol>
+<li><strong>应用 → 传输层</strong>：构建报文，TCP 做拥塞控制和窗口管理</li>
+<li><strong>IP + 邻居</strong>：路由查找，ARP 解析下一跳 MAC</li>
+<li><strong>qdisc</strong>：流量控制和调度</li>
+<li><strong>驱动 + DMA</strong>：放入 TX ring，网卡 DMA 发送</li>
+</ol>
+<p>性能优化的方向：</p>
+<ul>
+<li><strong>并行化</strong>：多队列网卡、中断绑定、RPS&#x2F;RFS&#x2F;XPS</li>
+<li><strong>减少报文数</strong>：GRO&#x2F;GSO&#x2F;TSO&#x2F;LRO 大包合并</li>
+<li><strong>减少拷贝</strong>：零拷贝、分页 skb、分散聚集 I&#x2F;O</li>
+<li><strong>减少中断</strong>：NAPI、中断合并、繁忙轮询</li>
+<li><strong>内核旁路</strong>：DPDK、XDP、RDMA（极致性能场景）</li>
+</ul>
+<p>理解了这些，再看任何网络性能问题，都能定位到是哪一层的瓶颈，然后针对性优化。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/Linux/" class="category-chain-item">Linux</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/Linux/%E5%86%85%E6%A0%B8/" class="category-chain-item">内核</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/%E5%86%85%E6%A0%B8%E7%BD%91%E7%BB%9C/" class="print-no-link">#内核网络</a>
+      
+        <a href="/tags/sk-buff/" class="print-no-link">#sk_buff</a>
+      
+        <a href="/tags/NAPI/" class="print-no-link">#NAPI</a>
+      
+        <a href="/tags/%E8%BD%AF%E4%B8%AD%E6%96%AD/" class="print-no-link">#软中断</a>
+      
+        <a href="/tags/RPS/" class="print-no-link">#RPS</a>
+      
+        <a href="/tags/GRO/" class="print-no-link">#GRO</a>
+      
+        <a href="/tags/%E6%80%A7%E8%83%BD%E4%BC%98%E5%8C%96/" class="print-no-link">#性能优化</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列</div>
+      <div>https://zhb816.github.io/2026/07/30/linux-kernel-network-stack-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年7月30日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/08/02/enterprise-network-ha-deep-dive/" title="企业网络高可用技术全解——VRRP、链路聚合、堆叠与 M-LAG">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">企业网络高可用技术全解——VRRP、链路聚合、堆叠与 M-LAG</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/07/25/linux-container-internals-deep-dive/" title="容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器">
+                        <span class="hidden-mobile">容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

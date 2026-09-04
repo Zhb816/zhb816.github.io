@@ -1,0 +1,1006 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="最近在啃 SD-WAN 的数据面实现，把 Underlay 和 Overlay 的关系、隧道封装、选路算法这些东西理了一遍，记录一下。 一、Underlay 和 Overlay 到底是什么SD-WAN 的核心思想就是把控制面和数据面分离，把物理网络和逻辑网络分离。  Underlay（ underlay 网络）：就是底层物理网络，运营商的 MPLS 专线、互联网宽带、5G 链路，这些都属于 Und">
+<meta property="og:type" content="article">
+<meta property="og:title" content="SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路">
+<meta property="og:url" content="https://zhb816.github.io/2026/09/01/sdwan-dataplane-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="最近在啃 SD-WAN 的数据面实现，把 Underlay 和 Overlay 的关系、隧道封装、选路算法这些东西理了一遍，记录一下。 一、Underlay 和 Overlay 到底是什么SD-WAN 的核心思想就是把控制面和数据面分离，把物理网络和逻辑网络分离。  Underlay（ underlay 网络）：就是底层物理网络，运营商的 MPLS 专线、互联网宽带、5G 链路，这些都属于 Und">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-09-01T12:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T07:46:14.384Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="IPSec">
+<meta property="article:tag" content="Overlay">
+<meta property="article:tag" content="QoS">
+<meta property="article:tag" content="SD-WAN">
+<meta property="article:tag" content="VXLAN">
+<meta property="article:tag" content="智能选路">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-09-01 20:00" pubdate>
+          2026年9月1日 晚上
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          3.1k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          27 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>最近在啃 SD-WAN 的数据面实现，把 Underlay 和 Overlay 的关系、隧道封装、选路算法这些东西理了一遍，记录一下。</p>
+<h2 id="一、Underlay-和-Overlay-到底是什么"><a href="#一、Underlay-和-Overlay-到底是什么" class="headerlink" title="一、Underlay 和 Overlay 到底是什么"></a>一、Underlay 和 Overlay 到底是什么</h2><p>SD-WAN 的核心思想就是<strong>把控制面和数据面分离，把物理网络和逻辑网络分离</strong>。</p>
+<ul>
+<li><strong>Underlay（ underlay 网络）</strong>：就是底层物理网络，运营商的 MPLS 专线、互联网宽带、5G 链路，这些都属于 Underlay。它只负责 IP 连通性，不管你跑的是什么业务。</li>
+<li><strong>Overlay（叠加网络）</strong>：在 Underlay 之上建的逻辑隧道网络，CPE 之间通过隧道封装，把业务报文封装在 Underlay 的 IP 报文里传输。对业务来说，它看到的是一个逻辑上的全互联网络，完全感知不到底层走的是哪条链路。</li>
+</ul>
+<p>打个比方：Underlay 是公路系统，Overlay 是在公路上跑的物流专线。货物（业务报文）装进集装箱（隧道封装），不管下面走的是高速还是国道，到了目的地再拆箱。</p>
+<h2 id="二、隧道封装协议对比"><a href="#二、隧道封装协议对比" class="headerlink" title="二、隧道封装协议对比"></a>二、隧道封装协议对比</h2><p>SD-WAN 常用的隧道协议有三种，各有取舍：</p>
+<h3 id="2-1-GRE（Generic-Routing-Encapsulation）"><a href="#2-1-GRE（Generic-Routing-Encapsulation）" class="headerlink" title="2.1 GRE（Generic Routing Encapsulation）"></a>2.1 GRE（Generic Routing Encapsulation）</h3><p>最简单的封装，直接在原始 IP 包外面再加一层 IP 头 + GRE 头。</p>
+<figure class="highlight gherkin"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs gherkin">|<span class="hljs-string"> 新IP头(20B) </span>|<span class="hljs-string"> GRE头(4B) </span>|<span class="hljs-string"> 原始IP头 </span>|<span class="hljs-string"> 载荷 </span>|<br></code></pre></td></tr></table></figure>
+
+<p>优点：简单、开销小、支持组播。<br>缺点：<strong>没有加密</strong>，只能在可信的 Underlay 上用（比如 MPLS 专线）。如果走互联网，必须配合 IPSec 加密。</p>
+<h3 id="2-2-IPSec（IP-Security）"><a href="#2-2-IPSec（IP-Security）" class="headerlink" title="2.2 IPSec（IP Security）"></a>2.2 IPSec（IP Security）</h3><p>严格来说 IPSec 不是隧道协议，是加密协议。SD-WAN 里通常用 <strong>IPSec Tunnel Mode</strong>，它会对整个原始 IP 包加密并封装。</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dns">| 新IP头<span class="hljs-punctuation">(</span><span class="hljs-number">20</span>B<span class="hljs-punctuation">)</span> | ESP头<span class="hljs-punctuation">(</span><span class="hljs-number">8</span>B<span class="hljs-punctuation">)</span> | 加密的[原始IP头 + 载荷] | ESP尾<span class="hljs-punctuation">(</span><span class="hljs-number">2</span>B<span class="hljs-punctuation">)</span> | 认证ICV<span class="hljs-punctuation">(</span><span class="hljs-number">12</span>B<span class="hljs-punctuation">)</span> |<br></code></pre></td></tr></table></figure>
+
+<p>优点：加密 + 认证，安全性最高。<br>缺点：<strong>开销大</strong>（封装开销约 50-60 字节），建立隧道慢（IKE 协商），不支持组播。</p>
+<h3 id="2-3-VXLAN（Virtual-Extensible-LAN）"><a href="#2-3-VXLAN（Virtual-Extensible-LAN）" class="headerlink" title="2.3 VXLAN（Virtual Extensible LAN）"></a>2.3 VXLAN（Virtual Extensible LAN）</h3><p>数据中心里用得最多，SD-WAN 厂商也开始用。VXLAN 用 UDP 封装，外层是 UDP + VXLAN 头（24 位 VNI）。</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dns">| 新IP头<span class="hljs-punctuation">(</span><span class="hljs-number">20</span>B<span class="hljs-punctuation">)</span> | UDP头<span class="hljs-punctuation">(</span><span class="hljs-number">8</span>B<span class="hljs-punctuation">)</span> | VXLAN头<span class="hljs-punctuation">(</span><span class="hljs-number">8</span>B<span class="hljs-punctuation">)</span> | 原始以太网帧 |<br></code></pre></td></tr></table></figure>
+
+<p>优点：支持大二层、VNI 数量多（1600万）、UDP 封装可以做 ECMP 负载分担。<br>缺点：本身不加密，需要配合 IPSec 或 DTLS；MTU 问题更严重（封装了整个以太网帧）。</p>
+<h3 id="实际选型"><a href="#实际选型" class="headerlink" title="实际选型"></a>实际选型</h3><p>主流 SD-WAN 厂商的做法是<strong>混合使用</strong>：</p>
+<ul>
+<li>走 MPLS 专线的隧道：用 GRE（专线本身可信，不需要加密，开销小）</li>
+<li>走互联网的隧道：用 IPSec 或 GRE over IPSec（必须加密）</li>
+<li>需要大二层延伸的场景：用 VXLAN over IPSec</li>
+</ul>
+<h2 id="三、MTU-和-MSS-问题——最容易踩的坑"><a href="#三、MTU-和-MSS-问题——最容易踩的坑" class="headerlink" title="三、MTU 和 MSS 问题——最容易踩的坑"></a>三、MTU 和 MSS 问题——最容易踩的坑</h2><p>隧道封装会增加额外的报文头，这就带来了 MTU 问题。</p>
+<p>假设 Underlay 的 MTU 是 1500：</p>
+<table>
+<thead>
+<tr>
+<th>封装方式</th>
+<th>额外开销</th>
+<th>有效 MTU</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>GRE</td>
+<td>24B</td>
+<td>1476</td>
+</tr>
+<tr>
+<td>IPSec Tunnel</td>
+<td>~58B</td>
+<td>1442</td>
+</tr>
+<tr>
+<td>VXLAN</td>
+<td>50B</td>
+<td>1450</td>
+</tr>
+</tbody></table>
+<p>如果业务报文大小是 1500，经过隧道封装后变成 1550+，超过了 Underlay 的 MTU，会发生什么？</p>
+<p><strong>如果设置了 DF 位（Don’t Fragment）</strong>：报文被丢弃，设备回 ICMP Fragmentation Needed。但很多防火墙会拦 ICMP，导致<strong>黑洞</strong>——小报文能通，大报文传着传着就断了。</p>
+<p><strong>如果没设 DF 位</strong>：报文被分片，到了对端再重组。分片会导致性能下降，而且有些设备（特别是状态防火墙）处理分片有问题。</p>
+<h3 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h3><ol>
+<li><strong>隧道接口调低 MTU</strong>：</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 例如 IPSec 隧道接口设为 1400</span><br>ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> tun0 mtu 1400<br></code></pre></td></tr></table></figure>
+
+<ol start="2">
+<li><strong>TCP MSS 钳制（MSS Clamping）</strong>：<br>在 TCP 三次握手时，把 SYN 包里的 MSS 值改小，让对端发送的 TCP 段不超过隧道 MTU。</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># iptables 示例</span><br>iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \<br>  -j TCPMSS --set-mss 1360<br></code></pre></td></tr></table></figure>
+<p>MSS &#x3D; MTU - 40（IP头20 + TCP头20），所以 MTU 1400 对应 MSS 1360。</p>
+<ol start="3">
+<li><strong>PMTUD（Path MTU Discovery）</strong>：靠 ICMP 自动探测，但前提是 ICMP 不被拦。生产环境里不太靠谱，一般还是手动配 MSS。</li>
+</ol>
+<h2 id="四、智能选路——SD-WAN-的核心价值"><a href="#四、智能选路——SD-WAN-的核心价值" class="headerlink" title="四、智能选路——SD-WAN 的核心价值"></a>四、智能选路——SD-WAN 的核心价值</h2><p>传统路由只看<strong>目标地址</strong>和<strong>路由度量</strong>（跳数、带宽），SD-WAN 的智能选路看的是<strong>实时网络质量</strong>和<strong>业务 SLA 要求</strong>。</p>
+<h3 id="4-1-链路质量探测"><a href="#4-1-链路质量探测" class="headerlink" title="4.1 链路质量探测"></a>4.1 链路质量探测</h3><p>CPE 之间会持续发送探测报文（类似 BFD，但更轻量），测量三个指标：</p>
+<ul>
+<li><strong>延迟（Latency）</strong>：单向或往返延迟</li>
+<li><strong>抖动（Jitter）</strong>：延迟的变化量</li>
+<li><strong>丢包率（Packet Loss）</strong>：探测报文的丢失比例</li>
+</ul>
+<p>探测报文通常用 UDP 或 ICMP，间隔 100ms-1s，在每条隧道上都跑。</p>
+<h3 id="4-2-业务识别"><a href="#4-2-业务识别" class="headerlink" title="4.2 业务识别"></a>4.2 业务识别</h3><p>SD-WAN 要知道每个报文属于什么业务，才能做针对性选路。识别方式有几种：</p>
+<ol>
+<li><strong>基于五元组</strong>：源&#x2F;目的 IP、端口、协议。最简单，但不够精细。</li>
+<li><strong>基于 DPI（深度包检测）</strong>：识别应用层协议，比如识别出这是 Zoom 视频会议、这是 Salesforce 流量。</li>
+<li><strong>基于域名&#x2F;URL</strong>：通过 DNS 嗅探或 SNI 识别。</li>
+<li><strong>基于 DSCP 标记</strong>：信任上游设备打的标记。</li>
+</ol>
+<h3 id="4-3-选路算法"><a href="#4-3-选路算法" class="headerlink" title="4.3 选路算法"></a>4.3 选路算法</h3><p>选路的本质是一个<strong>多目标优化问题</strong>：给每条链路打分，选分数最高的。</p>
+<p>一个简化的打分公式：</p>
+<figure class="highlight armasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs armasm">链路得分 = <span class="hljs-built_in">w1</span> * 延迟分 + <span class="hljs-built_in">w2</span> * 抖动分 + <span class="hljs-built_in">w3</span> * 丢包分 + <span class="hljs-built_in">w4</span> * 成本分<br></code></pre></td></tr></table></figure>
+
+<p>不同业务的权重不一样：</p>
+<table>
+<thead>
+<tr>
+<th>业务类型</th>
+<th>延迟权重</th>
+<th>抖动权重</th>
+<th>丢包权重</th>
+<th>成本权重</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>语音&#x2F;视频</td>
+<td>高</td>
+<td>极高</td>
+<td>高</td>
+<td>低</td>
+</tr>
+<tr>
+<td>实时交易</td>
+<td>极高</td>
+<td>高</td>
+<td>高</td>
+<td>低</td>
+</tr>
+<tr>
+<td>文件传输</td>
+<td>低</td>
+<td>低</td>
+<td>中</td>
+<td>高</td>
+</tr>
+<tr>
+<td>网页浏览</td>
+<td>中</td>
+<td>低</td>
+<td>中</td>
+<td>中</td>
+</tr>
+</tbody></table>
+<p>举个例子：一条 MPLS 专线延迟 20ms、丢包 0.1%、成本高；一条互联网宽带延迟 40ms、丢包 1%、成本低。</p>
+<ul>
+<li>语音会议走 MPLS（质量优先）</li>
+<li>软件更新走互联网（成本优先）</li>
+<li>如果 MPLS 丢包突然升到 5%，语音自动切到互联网（SLA 违约触发切换）</li>
+</ul>
+<h3 id="4-4-切换机制"><a href="#4-4-切换机制" class="headerlink" title="4.4 切换机制"></a>4.4 切换机制</h3><p>选路不是一成不变的，当链路质量变化时要切换。但切换不能太频繁，否则会导致业务振荡。</p>
+<p>常用的机制：</p>
+<ul>
+<li><strong>滞后阈值（Hysteresis）</strong>：只有当新链路比当前链路好超过一定阈值才切，避免来回跳。</li>
+<li><strong>保持时间（Hold Time）</strong>：切换后至少保持 N 秒，期间不再切换。</li>
+<li><strong>平滑切换</strong>：先在新链路上发探测，确认通了再切业务，有些厂商还做了双发选收（同时在两条链路上发，对端选先到的）。</li>
+</ul>
+<h2 id="五、QoS-和流量整形"><a href="#五、QoS-和流量整形" class="headerlink" title="五、QoS 和流量整形"></a>五、QoS 和流量整形</h2><p>智能选路解决的是”走哪条路”的问题，QoS 解决的是”路上堵车了谁先走”的问题。</p>
+<p>SD-WAN 的 QoS 通常是<strong>分层的</strong>：</p>
+<figure class="highlight erlang-repl"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><code class="hljs erlang-repl">物理接口（<span class="hljs-number">100</span>Mbps）<br>├── 业务队列<span class="hljs-number">1</span>：语音（优先级最高，带宽保证 <span class="hljs-number">20</span><span class="hljs-comment">%）</span><br>├── 业务队列<span class="hljs-number">2</span>：视频（优先级高，带宽保证 <span class="hljs-number">30</span><span class="hljs-comment">%）</span><br>├── 业务队列<span class="hljs-number">3</span>：关键业务（优先级中，带宽保证 <span class="hljs-number">30</span><span class="hljs-comment">%）</span><br>└── 业务队列<span class="hljs-number">4</span>：其他（优先级低，尽力而为）<br></code></pre></td></tr></table></figure>
+
+<p>关键技术点：</p>
+<ol>
+<li><strong>HQoS（分层 QoS）</strong>：先按业务分队列，再按用户&#x2F;站点分队列，适合多租户场景。</li>
+<li><strong>WRED（加权随机早期检测）</strong>：队列快满的时候随机丢包，避免全局同步（TCP 同时降速又同时提速）。</li>
+<li><strong>流量整形（Traffic Shaping）</strong>：把输出速率限制在承诺带宽以内，避免突发流量被运营商丢弃。整形是”缓存后均匀发送”，策略是”直接丢弃”，整形会增加延迟但更平滑。</li>
+</ol>
+<h2 id="六、总结"><a href="#六、总结" class="headerlink" title="六、总结"></a>六、总结</h2><p>SD-WAN 数据面的核心就三件事：</p>
+<ol>
+<li><strong>封装</strong>：用隧道把业务包封起来，Overlay 跑在 Underlay 上</li>
+<li><strong>选路</strong>：根据实时质量和业务 SLA 智能选择链路</li>
+<li><strong>保障</strong>：用 QoS 确保关键业务在拥塞时也能跑</li>
+</ol>
+<p>理解了这三层，再看任何厂商的 SD-WAN 方案，本质都是在这三件事上做不同的实现和优化。下一篇准备写控制面，SD-WAN 的控制器是怎么把策略下发到成千上万个 CPE 的。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E7%BD%91%E7%BB%9C/" class="category-chain-item">网络</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E7%BD%91%E7%BB%9C/SD-WAN/" class="category-chain-item">SD-WAN</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/VXLAN/" class="print-no-link">#VXLAN</a>
+      
+        <a href="/tags/IPSec/" class="print-no-link">#IPSec</a>
+      
+        <a href="/tags/SD-WAN/" class="print-no-link">#SD-WAN</a>
+      
+        <a href="/tags/%E6%99%BA%E8%83%BD%E9%80%89%E8%B7%AF/" class="print-no-link">#智能选路</a>
+      
+        <a href="/tags/QoS/" class="print-no-link">#QoS</a>
+      
+        <a href="/tags/Overlay/" class="print-no-link">#Overlay</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路</div>
+      <div>https://zhb816.github.io/2026/09/01/sdwan-dataplane-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年9月1日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/08/28/python-network-inspection-script/" title="用 Python 写了个简单的设备巡检脚本">
+                        <span class="hidden-mobile">用 Python 写了个简单的设备巡检脚本</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

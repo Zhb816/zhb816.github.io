@@ -1,0 +1,1062 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="IPSec 是企业 VPN 的事实标准，不管是站点到站点（Site-to-Site）还是远程接入（Remote Access），底层几乎都是 IPSec。但很多人只会照着模板配，对 IKE 协商、ESP 封装、NAT 穿越这些原理一知半解，出了问题只能抓瞎。这篇文章把 IPSec 从里到外拆一遍。 一、IPSec 协议族概览IPSec 不是一个协议，是一组协议的集合： 1234567IPSec 协">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用">
+<meta property="og:url" content="https://zhb816.github.io/2026/08/08/ipsec-vpn-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="IPSec 是企业 VPN 的事实标准，不管是站点到站点（Site-to-Site）还是远程接入（Remote Access），底层几乎都是 IPSec。但很多人只会照着模板配，对 IKE 协商、ESP 封装、NAT 穿越这些原理一知半解，出了问题只能抓瞎。这篇文章把 IPSec 从里到外拆一遍。 一、IPSec 协议族概览IPSec 不是一个协议，是一组协议的集合： 1234567IPSec 协">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-08-08T07:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T07:57:37.045Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="ESP">
+<meta property="article:tag" content="IKEv2">
+<meta property="article:tag" content="IPSec">
+<meta property="article:tag" content="NAT-T">
+<meta property="article:tag" content="VPN">
+<meta property="article:tag" content="隧道">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-08-08 15:00" pubdate>
+          2026年8月8日 下午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          6.9k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          58 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>IPSec 是企业 VPN 的事实标准，不管是站点到站点（Site-to-Site）还是远程接入（Remote Access），底层几乎都是 IPSec。但很多人只会照着模板配，对 IKE 协商、ESP 封装、NAT 穿越这些原理一知半解，出了问题只能抓瞎。这篇文章把 IPSec 从里到外拆一遍。</p>
+<h2 id="一、IPSec-协议族概览"><a href="#一、IPSec-协议族概览" class="headerlink" title="一、IPSec 协议族概览"></a>一、IPSec 协议族概览</h2><p>IPSec 不是一个协议，是一组协议的集合：</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs dart"><span class="hljs-title class_">IPSec</span> 协议族<br>├── 认证头 AH（<span class="hljs-title class_">Authentication</span> <span class="hljs-title class_">Header</span>）—— 只做认证，不加密，已基本不用<br>├── 封装安全载荷 ESP（<span class="hljs-title class_">Encapsulating</span> <span class="hljs-title class_">Security</span> <span class="hljs-title class_">Payload</span>）—— 加密 + 认证，主流<br>├── 互联网密钥交换 IKE（<span class="hljs-title class_">Internet</span> <span class="hljs-title class_">Key</span> <span class="hljs-title class_">Exchange</span>）<br>│   ├── <span class="hljs-title class_">IKEv1</span>（RFC <span class="hljs-number">2409</span>）—— 老版本，两阶段协商<br>│   └── <span class="hljs-title class_">IKEv2</span>（RFC <span class="hljs-number">7296</span>）—— 新版本，更安全、更快、支持 MOBIKE<br>└── 互联网安全关联和密钥管理协议 ISAKMP（RFC <span class="hljs-number">2408</span>）—— IKE 的框架<br></code></pre></td></tr></table></figure>
+
+<p>核心概念：<strong>SA（Security Association，安全关联）</strong></p>
+<p>SA 是 IPSec 的基础，它定义了”用什么协议、什么加密算法、什么密钥、封装模式”来保护流量。SA 是单向的，所以一条双向通信需要两个 SA（一个入方向、一个出方向）。</p>
+<p>SA 由 SPI（Security Parameter Index）唯一标识，SPI 是一个 32 位的数字，放在 ESP&#x2F;AH 头里，接收方用 SPI 查找对应的 SA。</p>
+<h2 id="二、IKE-协商——密钥是怎么来的"><a href="#二、IKE-协商——密钥是怎么来的" class="headerlink" title="二、IKE 协商——密钥是怎么来的"></a>二、IKE 协商——密钥是怎么来的</h2><p>IPSec 用对称加密（AES）保护数据，但对称密钥需要安全地分发。IKE 就是用来协商密钥和建立 SA 的协议。</p>
+<h3 id="2-1-IKEv1：两阶段协商"><a href="#2-1-IKEv1：两阶段协商" class="headerlink" title="2.1 IKEv1：两阶段协商"></a>2.1 IKEv1：两阶段协商</h3><p>IKEv1 分两个阶段：</p>
+<p><strong>第一阶段（Main Mode &#x2F; Aggressive Mode）</strong>：建立 IKE SA（也叫 ISAKMP SA），这是一个控制通道，用来保护后续的协商流量。</p>
+<p>Main Mode 有 6 条消息：</p>
+<ol>
+<li>发起方 → 响应方：提议（加密算法、哈希算法、认证方式、DH 组）</li>
+<li>响应方 → 发起方：接受提议</li>
+<li>发起方 → 响应方：DH 公钥 + Nonce（随机数）</li>
+<li>响应方 → 发起方：DH 公钥 + Nonce</li>
+<li>发起方 → 响应方：身份信息（IP&#x2F;域名）+ 认证（预共享密钥&#x2F;证书签名），加密</li>
+<li>响应方 → 发起方：身份信息 + 认证，加密</li>
+</ol>
+<p>前 4 条消息明文，后 2 条加密（用 DH 协商出的密钥加密）。</p>
+<p>Aggressive Mode 只有 3 条消息，把身份信息在第 1 条就发了（明文），速度快但安全性差，不推荐。</p>
+<p>第一阶段协商完成后，双方有了：</p>
+<ul>
+<li>共享密钥（通过 DH 算法计算得出，DH 是 Diffie-Hellman 密钥交换）</li>
+<li>IKE SA（保护后续协商的加密通道）</li>
+</ul>
+<p><strong>第二阶段（Quick Mode）</strong>：建立 IPSec SA（数据通道），用来保护实际业务流量。</p>
+<p>Quick Mode 有 3 条消息（都在 IKE SA 的保护下，加密传输）：</p>
+<ol>
+<li>发起方 → 响应方：提议（ESP&#x2F;AH、加密算法、认证算法、感兴趣流）+ Nonce</li>
+<li>响应方 → 发起方：接受提议 + Nonce</li>
+<li>发起方 → 响应方：确认</li>
+</ol>
+<p>第二阶段完成后，建立了两个方向的 IPSec SA，业务流量可以通过 ESP 加密传输了。</p>
+<h3 id="2-2-IKEv2：更简单、更安全、更快"><a href="#2-2-IKEv2：更简单、更安全、更快" class="headerlink" title="2.2 IKEv2：更简单、更安全、更快"></a>2.2 IKEv2：更简单、更安全、更快</h3><p>IKEv2 只有一个阶段，4 条消息（IKE_SA_INIT + IKE_AUTH）：</p>
+<ol>
+<li><strong>IKE_SA_INIT 请求</strong>：发起方 → 响应方，包含 IKE 提议、DH 公钥、Nonce</li>
+<li><strong>IKE_SA_INIT 响应</strong>：响应方 → 发起方，包含接受的提议、DH 公钥、Nonce<ul>
+<li>到这里，双方已经通过 DH 计算出共享密钥</li>
+</ul>
+</li>
+<li><strong>IKE_AUTH 请求</strong>：发起方 → 响应方，包含身份、认证（证书&#x2F;预共享密钥&#x2F;EAP）、第一个 CHILD_SA 的提议，全部加密</li>
+<li><strong>IKE_AUTH 响应</strong>：响应方 → 发起方，包含身份、认证、CHILD_SA 确认，全部加密</li>
+</ol>
+<p>IKEv2 相比 IKEv1 的优势：</p>
+<ul>
+<li><strong>消息更少</strong>：4 条 vs 9 条（Main Mode 6 + Quick Mode 3），建立更快</li>
+<li><strong>内置 DPD（Dead Peer Detection）</strong>：IKEv1 需要额外配置，IKEv2 原生支持</li>
+<li><strong>支持 MOBIKE</strong>：移动端网络切换（WiFi→4G）时，IP 变了但隧道不中断</li>
+<li><strong>支持 EAP 认证</strong>：可以和 RADIUS、LDAP 集成，做远程接入的用户名密码认证</li>
+<li><strong>更安全的密钥派生</strong>：用 PRF（伪随机函数）派生多个密钥，每个用途的密钥独立</li>
+<li><strong>NAT 穿越原生支持</strong>：IKEv1 的 NAT-T 是扩展，IKEv2 原生支持</li>
+</ul>
+<h3 id="2-3-DH-算法——密钥交换的核心"><a href="#2-3-DH-算法——密钥交换的核心" class="headerlink" title="2.3 DH 算法——密钥交换的核心"></a>2.3 DH 算法——密钥交换的核心</h3><p>DH（Diffie-Hellman）密钥交换是 IKE 的核心，它让双方在不安全的信道上协商出共享密钥，而不需要直接传输密钥。</p>
+<p>原理（简化版）：</p>
+<ol>
+<li>双方约定一个大素数 p 和一个生成元 g</li>
+<li>发起方生成私钥 a，计算公钥 A &#x3D; g^a mod p，发给响应方</li>
+<li>响应方生成私钥 b，计算公钥 B &#x3D; g^b mod p，发给发起方</li>
+<li>发起方计算共享密钥 &#x3D; B^a mod p &#x3D; (g^b)^a mod p &#x3D; g^(ab) mod p</li>
+<li>响应方计算共享密钥 &#x3D; A^b mod p &#x3D; (g^a)^b mod p &#x3D; g^(ab) mod p</li>
+<li>双方得到相同的共享密钥 g^(ab) mod p</li>
+</ol>
+<p>攻击者即使截获了 A 和 B，没有 a 或 b，也无法计算出共享密钥（离散对数难题）。</p>
+<p>DH 组的选择：</p>
+<ul>
+<li>Group 1：768 位，不安全，已废弃</li>
+<li>Group 2：1024 位，不推荐</li>
+<li>Group 5：1536 位，勉强可用</li>
+<li>Group 14：2048 位，推荐最低标准</li>
+<li>Group 19：256 位 ECP（椭圆曲线），推荐，速度快</li>
+<li>Group 20：384 位 ECP，高安全场景</li>
+<li>Group 21：521 位 ECP，最高安全</li>
+</ul>
+<p>椭圆曲线 DH（ECDH）比传统 DH 用更短的密钥达到相同的安全强度，计算更快，推荐使用 Group 19&#x2F;20。</p>
+<h2 id="三、ESP——数据是怎么加密的"><a href="#三、ESP——数据是怎么加密的" class="headerlink" title="三、ESP——数据是怎么加密的"></a>三、ESP——数据是怎么加密的</h2><p>ESP（Encapsulating Security Payload）是 IPSec 数据面的核心协议，负责加密和认证。</p>
+<h3 id="3-1-ESP-报文格式"><a href="#3-1-ESP-报文格式" class="headerlink" title="3.1 ESP 报文格式"></a>3.1 ESP 报文格式</h3><figure class="highlight asciidoc"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><code class="hljs asciidoc"><span class="hljs-code"> 0                   1                   2                   3</span><br><span class="hljs-section"> 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="hljs-section">|               Security Parameters Index (SPI)                 |</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="hljs-section">|                      Sequence Number                            |</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br>|                    Payload Data (variable)                     |<br>~                          (加密部分)                             ~<br><span class="hljs-section">|                                                               |</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="hljs-section">|                         Padding (0-255 bytes)                  |</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="hljs-section">|  Pad Length   | Next Header    |  Integrity Check Value (ICV) |</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br></code></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>SPI</strong>：32 位，标识 SA</li>
+<li><strong>序列号</strong>：32 位，防重放攻击（接收方维护一个滑动窗口，重复或过旧的序列号丢弃）</li>
+<li><strong>载荷数据</strong>：加密的原始 IP 报文（隧道模式）或传输层报文（传输模式）</li>
+<li><strong>填充</strong>：加密算法要求明文长度是块大小的整数倍，需要填充</li>
+<li><strong>填充长度</strong>：填充了多少字节</li>
+<li><strong>下一个头部</strong>：原始报文的协议类型（4&#x3D;IP-in-IP, 6&#x3D;TCP, 17&#x3D;UDP）</li>
+<li><strong>ICV</strong>：完整性校验值，对整个 ESP 报文计算认证（HMAC-SHA1&#x2F;SHA256），防篡改</li>
+</ul>
+<h3 id="3-2-隧道模式-vs-传输模式"><a href="#3-2-隧道模式-vs-传输模式" class="headerlink" title="3.2 隧道模式 vs 传输模式"></a>3.2 隧道模式 vs 传输模式</h3><p><strong>传输模式（Transport Mode）</strong>：只加密传输层内容，原始 IP 头保留。</p>
+<figure class="highlight gherkin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs gherkin">|<span class="hljs-string"> 原始IP头 </span>|<span class="hljs-string"> ESP头 </span>|<span class="hljs-string"> [TCP头 + 数据] </span>|<span class="hljs-string"> ESP尾 </span>|<span class="hljs-string"> ICV </span>|<br>           ↑ 加密和认证从这里开始<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li>优点：开销小（不需要额外 IP 头）</li>
+<li>缺点：原始 IP 头明文，能看到源和目的 IP；只能保护端到端通信，不能用于 VPN 网关</li>
+<li>适用场景：主机到主机的端到端加密（比如两台服务器之间直接加密）</li>
+</ul>
+<p><strong>隧道模式（Tunnel Mode）</strong>：加密整个原始 IP 报文，外面再加一个新 IP 头。</p>
+<figure class="highlight gherkin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs gherkin">|<span class="hljs-string"> 新IP头 </span>|<span class="hljs-string"> ESP头 </span>|<span class="hljs-string"> [原始IP头 + TCP头 + 数据] </span>|<span class="hljs-string"> ESP尾 </span>|<span class="hljs-string"> ICV </span>|<br>                    ↑ 整个原始报文都被加密<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li>优点：原始 IP 头加密，隐藏内部网络拓扑；可以用于 VPN 网关（网关之间建立隧道，内部主机流量通过隧道转发）</li>
+<li>缺点：开销大（额外 20 字节 IP 头 + ESP 头&#x2F;尾&#x2F;ICV，总共约 50-60 字节）</li>
+<li>适用场景：Site-to-Site VPN、远程接入 VPN（主流都是隧道模式）</li>
+</ul>
+<h3 id="3-3-加密和认证算法"><a href="#3-3-加密和认证算法" class="headerlink" title="3.3 加密和认证算法"></a>3.3 加密和认证算法</h3><p><strong>加密算法</strong>（对称加密，加密数据）：</p>
+<ul>
+<li>DES：56 位，不安全，已废弃</li>
+<li>3DES：168 位，不推荐（慢且有安全问题）</li>
+<li>AES-128：推荐，性能和安全的平衡</li>
+<li>AES-256：高安全场景</li>
+<li>AES-GCM：认证加密（AEAD），加密和认证一次完成，性能好，推荐</li>
+<li>ChaCha20-Poly1305：移动设备上性能好</li>
+</ul>
+<p><strong>认证算法</strong>（完整性校验，防篡改）：</p>
+<ul>
+<li>MD5：不安全，已废弃</li>
+<li>SHA1：不推荐（碰撞攻击）</li>
+<li>SHA2-256：推荐</li>
+<li>SHA2-384&#x2F;512：高安全场景</li>
+<li>AES-GCM&#x2F;ChaCha20-Poly1305：自带认证，不需要单独的认证算法</li>
+</ul>
+<p>推荐组合：<strong>AES-256-GCM + ECP Group 20 + SHA2-384</strong>，这是目前的最佳实践。</p>
+<h2 id="四、NAT-穿越（NAT-T）"><a href="#四、NAT-穿越（NAT-T）" class="headerlink" title="四、NAT 穿越（NAT-T）"></a>四、NAT 穿越（NAT-T）</h2><p>IPSec 在 NAT 环境下会遇到问题：</p>
+<ol>
+<li><strong>ESP 协议没有端口号</strong>：ESP 是 IP 协议号 50，没有 TCP&#x2F;UDP 端口，NAT 设备无法做端口转换（PAT），多个内网主机不能共用一个公网 IP 做 IPSec</li>
+<li><strong>AH 认证整个 IP 头</strong>：NAT 修改 IP 头后，AH 的认证会失败（所以 AH 完全不支持 NAT）</li>
+<li><strong>IKE 协商中的 IP 地址</strong>：IKE 载荷里包含了对端 IP，NAT 修改后会导致认证失败</li>
+</ol>
+<h3 id="NAT-T-的解决方案"><a href="#NAT-T-的解决方案" class="headerlink" title="NAT-T 的解决方案"></a>NAT-T 的解决方案</h3><p>NAT-T 把 ESP 报文封装在 UDP 里（端口 4500），这样 NAT 设备就能像处理普通 UDP 一样处理 ESP 报文：</p>
+<figure class="highlight gherkin"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><code class="hljs gherkin">封装前（ESP）：<br>|<span class="hljs-string"> 新IP头 </span>|<span class="hljs-string"> ESP头 </span>|<span class="hljs-string"> 加密数据 </span>|<span class="hljs-string"> ESP尾 </span>|<span class="hljs-string"> ICV </span>|<br><br>封装后（NAT-T，UDP封装ESP）：<br>|<span class="hljs-string"> 新IP头 </span>|<span class="hljs-string"> UDP头(源4500, 目的4500) </span>|<span class="hljs-string"> ESP头 </span>|<span class="hljs-string"> 加密数据 </span>|<span class="hljs-string"> ESP尾 </span>|<span class="hljs-string"> ICV </span>|<br></code></pre></td></tr></table></figure>
+
+<p>NAT-T 的工作流程：</p>
+<ol>
+<li><strong>NAT 发现</strong>：IKE 协商时，双方发送 NAT-D 载荷（包含对端 IP 和端口的哈希），如果发现中间有 NAT 设备（哈希不匹配），就自动启用 NAT-T</li>
+<li><strong>端口切换</strong>：IKE 协商从 UDP 500 切换到 UDP 4500（因为 500 端口在某些 NAT 设备上有特殊处理）</li>
+<li><strong>ESP 封装</strong>：数据面的 ESP 报文封装在 UDP 4500 里传输</li>
+<li><strong>保活报文</strong>：NAT 会话有超时时间，IKE 发送 NAT-T Keepalive 报文（1 字节的 UDP 报文）保持 NAT 会话不超时</li>
+</ol>
+<h3 id="NAT-T-的限制"><a href="#NAT-T-的限制" class="headerlink" title="NAT-T 的限制"></a>NAT-T 的限制</h3><ol>
+<li><strong>只能有一个 NAT 设备在路径上</strong>：如果有多层 NAT（运营商 NAT + 家用路由器 NAT），可能会有问题</li>
+<li><strong>NAT 设备不能改变 IKE 端口</strong>：如果 NAT 设备把 UDP 500 改成其他端口，IKE 会失败（所以很多设备强制用 4500）</li>
+<li><strong>AH 不支持 NAT-T</strong>：AH 认证整个 IP 头，NAT 修改后认证必然失败，所以 AH 在 NAT 环境下完全不可用</li>
+<li><strong>MTU 更小</strong>：NAT-T 额外加了 UDP 头（8 字节），有效 MTU 进一步减小，需要调小 MSS</li>
+</ol>
+<h2 id="五、IPSec-VPN-的高可用"><a href="#五、IPSec-VPN-的高可用" class="headerlink" title="五、IPSec VPN 的高可用"></a>五、IPSec VPN 的高可用</h2><p>生产环境里 IPSec VPN 不能是单点，需要高可用设计。</p>
+<h3 id="5-1-双机热备"><a href="#5-1-双机热备" class="headerlink" title="5.1 双机热备"></a>5.1 双机热备</h3><p>VPN 网关双机部署，用 VRRP&#x2F;HSRP 做网关冗余，主设备故障时备设备接管。</p>
+<p>问题：IPSec SA 是在主设备上建立的，主设备故障后，备设备没有 SA，隧道需要重新协商，业务中断时间长（IKE 协商要几秒）。</p>
+<p>解决方案：<strong>SA 同步</strong>（Stateful Failover），主设备把 IKE SA 和 IPSec SA 实时同步到备设备，故障切换时备设备直接用同步的 SA，不需要重新协商，业务中断时间 &lt; 1 秒。</p>
+<h3 id="5-2-多隧道负载分担"><a href="#5-2-多隧道负载分担" class="headerlink" title="5.2 多隧道负载分担"></a>5.2 多隧道负载分担</h3><p>建立多条 IPSec 隧道（不同的对端 IP 或不同的加密域），用路由协议（OSPF&#x2F;BGP）或策略路由做负载分担。一条隧道故障时，流量自动切到另一条。</p>
+<h3 id="5-3-DPD（Dead-Peer-Detection）"><a href="#5-3-DPD（Dead-Peer-Detection）" class="headerlink" title="5.3 DPD（Dead Peer Detection）"></a>5.3 DPD（Dead Peer Detection）</h3><p>DPD 定时发送 Hello 报文检测对端是否存活，如果连续几次没有收到回应，认为对端故障，删除 SA 并重新协商。</p>
+<p>IKEv2 原生支持 DPD，IKEv1 需要额外配置。</p>
+<p>DPD 配置要点：</p>
+<ul>
+<li>检测间隔不要太短（建议 10-30 秒），否则会增加不必要的流量</li>
+<li>重试次数 3-5 次</li>
+<li>检测到故障后要能自动重建隧道</li>
+</ul>
+<h3 id="5-4-隧道保活"><a href="#5-4-隧道保活" class="headerlink" title="5.4 隧道保活"></a>5.4 隧道保活</h3><p>有些运营商的 NAT 或防火墙会超时删除空闲会话，需要配置隧道保活：</p>
+<ul>
+<li><strong>IKE Keepalive</strong>：IKE 层面的保活报文</li>
+<li><strong>NAT-T Keepalive</strong>：NAT 环境下的 1 字节 UDP 保活</li>
+<li><strong>业务层面保活</strong>：有些应用自己有心跳，能保持隧道活跃</li>
+<li><strong>永久隧道（Always-On）</strong>：配置感兴趣流为 any，隧道永久保持，不因为没有流量而超时</li>
+</ul>
+<h2 id="六、常见故障排查"><a href="#六、常见故障排查" class="headerlink" title="六、常见故障排查"></a>六、常见故障排查</h2><h3 id="6-1-隧道建立不起来"><a href="#6-1-隧道建立不起来" class="headerlink" title="6.1 隧道建立不起来"></a>6.1 隧道建立不起来</h3><p>排查顺序：</p>
+<ol>
+<li><strong>连通性</strong>：ping 对端公网 IP，通不通？</li>
+<li><strong>端口</strong>：UDP 500 和 4500 有没有被中间防火墙拦？<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 用 nmap 测端口</span><br>nmap -sU -p 500,4500 对端IP<br></code></pre></td></tr></table></figure></li>
+<li><strong>IKE 提议</strong>：两边的加密算法、哈希算法、DH 组、认证方式是否一致？</li>
+<li><strong>认证信息</strong>：预共享密钥是否一致？证书是否有效（过期、吊销、信任链）？</li>
+<li><strong>身份信息</strong>：IKE 协商的身份（IP&#x2F;域名&#x2F;证书 DN）是否匹配？</li>
+<li><strong>NAT 环境</strong>：有没有 NAT？NAT-T 是否启用？</li>
+<li><strong>抓包</strong>：<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 抓 IKE 和 ESP 报文</span><br>tcpdump -i eth0 <span class="hljs-string">&#x27;udp port 500 or udp port 4500 or esp&#x27;</span> -nn<br></code></pre></td></tr></table></figure>
+看协商到哪一步停了，是 IKE_SA_INIT 没回应，还是 IKE_AUTH 失败。</li>
+</ol>
+<h3 id="6-2-隧道建立了但业务不通"><a href="#6-2-隧道建立了但业务不通" class="headerlink" title="6.2 隧道建立了但业务不通"></a>6.2 隧道建立了但业务不通</h3><ol>
+<li><strong>感兴趣流（ACL）</strong>：两边的加密域是否匹配？发起方的源&#x3D;对端的目的，发起方的目的&#x3D;对端的源，要镜像对称。</li>
+<li><strong>路由</strong>：到对端内网的路由是否指向隧道接口？</li>
+<li><strong>NAT</strong>：有没有 NAT 把内网地址转换了？IPSec 感兴趣流要在 NAT 之前匹配，需要配置 NAT 豁免（NAT Exemption）。</li>
+<li><strong>防火墙策略</strong>：隧道接口到内网接口之间有没有安全策略放行？</li>
+<li><strong>MTU&#x2F;MSS</strong>：大包不通小包通，基本就是 MTU 问题，调小 MSS。</li>
+<li><strong>SA 不匹配</strong>：两边的 SA 提议（ESP 加密&#x2F;认证算法）是否一致？</li>
+</ol>
+<h3 id="6-3-隧道时断时续"><a href="#6-3-隧道时断时续" class="headerlink" title="6.3 隧道时断时续"></a>6.3 隧道时断时续</h3><ol>
+<li><strong>DPD 配置</strong>：DPD 太敏感，网络轻微抖动就认为对端故障，删除 SA。调大 DPD 间隔和重试次数。</li>
+<li><strong>NAT 会话超时</strong>：NAT 设备超时删除会话，配置 NAT-T Keepalive。</li>
+<li><strong>链路质量差</strong>：丢包导致 IKE 协商失败或 DPD 超时，检查 Underlay 链路质量。</li>
+<li><strong>SA 生命周期不匹配</strong>：两边 SA 生命周期差太多，一边过期重建时另一边还在用旧 SA，导致短暂中断。尽量让两边生命周期一致。</li>
+</ol>
+<h2 id="七、IPSec-VPN-设计最佳实践"><a href="#七、IPSec-VPN-设计最佳实践" class="headerlink" title="七、IPSec VPN 设计最佳实践"></a>七、IPSec VPN 设计最佳实践</h2><ol>
+<li><strong>用 IKEv2，不用 IKEv1</strong>：IKEv2 更安全、更快、功能更多，除非对端设备太老不支持</li>
+<li><strong>用证书认证，不用预共享密钥</strong>：预共享密钥管理困难（每个隧道一个密钥，多了根本管不过来），证书可以集中管理、自动轮换</li>
+<li><strong>用 AES-GCM，不用 AES-CBC + HMAC</strong>：GCM 是认证加密，一次完成加密和认证，性能更好，安全性更高</li>
+<li><strong>用 ECP DH 组（Group 19&#x2F;20）</strong>：比传统 DH 更快更安全</li>
+<li><strong>配置 PFS（Perfect Forward Secrecy）</strong>：第二阶段协商时也做 DH 交换，即使长期密钥泄露，历史会话密钥也无法被破解</li>
+<li><strong>合理配置 SA 生命周期</strong>：IKE SA 8-24 小时，IPSec SA 1-8 小时，不要太短（频繁协商增加开销）也不要太长（密钥用太久不安全）</li>
+<li><strong>配置 DPD 和自动重连</strong>：确保故障后能自动恢复</li>
+<li><strong>调小 MSS</strong>：IPSec 隧道的 MSS 建议设为 1360（MTU 1400 - 40），NAT-T 环境再减 8（1352）</li>
+<li><strong>监控隧道状态</strong>：用 SNMP 或日志监控隧道 Up&#x2F;Down，及时发现故障</li>
+<li><strong>文档化</strong>：每个隧道的对端、加密域、算法、密钥位置都要记录，运维时能快速定位</li>
+</ol>
+<h2 id="八、总结"><a href="#八、总结" class="headerlink" title="八、总结"></a>八、总结</h2><p>IPSec VPN 的核心就三层：</p>
+<ol>
+<li><strong>IKE 协商</strong>：用 DH 算法安全地协商密钥，建立 SA（控制面）</li>
+<li><strong>ESP 封装</strong>：用对称加密加密业务流量，隧道模式隐藏内部拓扑（数据面）</li>
+<li><strong>NAT-T 和高可用</strong>：解决 NAT 环境下的兼容性和生产环境的可靠性</li>
+</ol>
+<p>理解了这三层，再看任何厂商的 IPSec 配置，本质都是在配置这三层的参数。排查故障时也按这个顺序来：先看 IKE 协商通不通（控制面），再看 ESP 封装对不对（数据面），最后看 NAT 和路由（环境因素）。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BC%81%E4%B8%9A%E7%BD%91%E7%BB%9C/" class="category-chain-item">企业网络</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BC%81%E4%B8%9A%E7%BD%91%E7%BB%9C/VPN/" class="category-chain-item">VPN</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/IPSec/" class="print-no-link">#IPSec</a>
+      
+        <a href="/tags/IKEv2/" class="print-no-link">#IKEv2</a>
+      
+        <a href="/tags/ESP/" class="print-no-link">#ESP</a>
+      
+        <a href="/tags/NAT-T/" class="print-no-link">#NAT-T</a>
+      
+        <a href="/tags/VPN/" class="print-no-link">#VPN</a>
+      
+        <a href="/tags/%E9%9A%A7%E9%81%93/" class="print-no-link">#隧道</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用</div>
+      <div>https://zhb816.github.io/2026/08/08/ipsec-vpn-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年8月8日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/08/10/enterprise-campus-network-architecture/" title="企业园区网架构设计——从三层架构到 Spine-Leaf">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">企业园区网架构设计——从三层架构到 Spine-Leaf</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/08/05/mpls-vpn-deep-dive/" title="MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网">
+                        <span class="hidden-mobile">MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

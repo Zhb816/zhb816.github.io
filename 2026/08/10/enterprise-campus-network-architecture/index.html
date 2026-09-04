@@ -1,0 +1,980 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="企业园区网是所有业务的承载基础，架构设计得好不好，直接影响后续十几年的运维成本和业务扩展能力。这篇文章从传统三层架构讲起，分析它的问题，再讲到现在主流的 Spine-Leaf + VXLAN&#x2F;EVPN 架构，最后聊聊实际设计中的取舍。 一、传统三层架构经典的园区网三层架构：接入层、汇聚层、核心层。 123456789101112131415            ┌──────────┐">
+<meta property="og:type" content="article">
+<meta property="og:title" content="企业园区网架构设计——从三层架构到 Spine-Leaf">
+<meta property="og:url" content="https://zhb816.github.io/2026/08/10/enterprise-campus-network-architecture/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="企业园区网是所有业务的承载基础，架构设计得好不好，直接影响后续十几年的运维成本和业务扩展能力。这篇文章从传统三层架构讲起，分析它的问题，再讲到现在主流的 Spine-Leaf + VXLAN&#x2F;EVPN 架构，最后聊聊实际设计中的取舍。 一、传统三层架构经典的园区网三层架构：接入层、汇聚层、核心层。 123456789101112131415            ┌──────────┐">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-08-10T02:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T07:55:27.006Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="EVPN">
+<meta property="article:tag" content="Spine-Leaf">
+<meta property="article:tag" content="VXLAN">
+<meta property="article:tag" content="三层架构">
+<meta property="article:tag" content="园区网">
+<meta property="article:tag" content="网络设计">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>企业园区网架构设计——从三层架构到 Spine-Leaf - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="企业园区网架构设计——从三层架构到 Spine-Leaf"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-08-10 10:00" pubdate>
+          2026年8月10日 上午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          3.9k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          33 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">企业园区网架构设计——从三层架构到 Spine-Leaf</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>企业园区网是所有业务的承载基础，架构设计得好不好，直接影响后续十几年的运维成本和业务扩展能力。这篇文章从传统三层架构讲起，分析它的问题，再讲到现在主流的 Spine-Leaf + VXLAN&#x2F;EVPN 架构，最后聊聊实际设计中的取舍。</p>
+<h2 id="一、传统三层架构"><a href="#一、传统三层架构" class="headerlink" title="一、传统三层架构"></a>一、传统三层架构</h2><p>经典的园区网三层架构：接入层、汇聚层、核心层。</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><code class="hljs dart">            ┌──────────┐<br>            │  核心层   │  <span class="hljs-title class_">Core</span>：高速转发，跑动态路由<br>            └────┬─────┘<br>                 │<br>      ┌──────────┴──────────┐<br>      │                     │<br> ┌────┴─────┐         ┌────┴─────┐<br> │  汇聚层-A  │         │  汇聚层-B  │  <span class="hljs-title class_">Aggregation</span>：策略、网关、安全<br> └────┬─────┘         └────┬─────┘<br>      │                     │<br>┌─────┴─────┐         ┌─────┴─────┐<br>│ 接入交换机  │  ...    │ 接入交换机  │  <span class="hljs-title class_">Access</span>：终端接入、<span class="hljs-title class_">PoE</span>、端口安全<br>└─────┬─────┘         └─────┬─────┘<br>      │                     │<br>   终端PC/AP              终端PC/AP<br></code></pre></td></tr></table></figure>
+
+<h3 id="各层职责"><a href="#各层职责" class="headerlink" title="各层职责"></a>各层职责</h3><p><strong>接入层（Access）</strong>：</p>
+<ul>
+<li>直接连接终端设备（PC、IP电话、AP、摄像头、打印机）</li>
+<li>PoE 供电（给 AP、IP 电话、摄像头供电）</li>
+<li>端口安全（802.1X、MAC 绑定、端口隔离）</li>
+<li>VLAN 划分（接入端口通常是 Access 口，属于某个 VLAN）</li>
+<li>STP 边缘端口（PortFast &#x2F; Edge Port）</li>
+</ul>
+<p><strong>汇聚层（Aggregation&#x2F;Distribution）</strong>：</p>
+<ul>
+<li>接入层的网关（VLAN 接口&#x2F;SVI 配置在汇聚层）</li>
+<li>策略控制（ACL、QoS、策略路由）</li>
+<li>安全边界（防火墙、入侵检测通常挂在汇聚层）</li>
+<li>三层路由（汇聚层以上跑 OSPF&#x2F;BGP，以下是二层）</li>
+<li>冗余设计（汇聚层通常双机，用 VRRP&#x2F;HSRP 做网关冗余）</li>
+</ul>
+<p><strong>核心层（Core）</strong>：</p>
+<ul>
+<li>高速转发，不做策略（策略尽量在汇聚层做，核心只负责快速交换）</li>
+<li>连接各个汇聚块、数据中心、出口</li>
+<li>高带宽、低延迟（通常用万兆&#x2F;四万兆链路）</li>
+<li>全互联拓扑（核心层设备之间 full-mesh 或环形）</li>
+</ul>
+<h3 id="三层架构的问题"><a href="#三层架构的问题" class="headerlink" title="三层架构的问题"></a>三层架构的问题</h3><ol>
+<li><p><strong>STP 阻塞链路，带宽利用率低</strong><br>汇聚到接入通常双上联，但 STP 会阻塞其中一条，实际可用带宽只有一条。50% 的链路在闲着。</p>
+</li>
+<li><p><strong>收敛慢</strong><br>STP 收敛要 30-50 秒（即使开了 RSTP 也要几秒），链路故障时业务中断时间长。</p>
+</li>
+<li><p><strong>东西向流量瓶颈</strong><br>服务器虚拟化之后，虚拟机之间的流量（东西向）暴增。传统架构里，同一汇聚块下的服务器之间流量要经过汇聚层转发，不同汇聚块之间要经过核心层，延迟高、容易拥塞。</p>
+</li>
+<li><p><strong>VLAN 数量限制</strong><br>传统 VLAN 只有 4094 个，大规模园区（特别是多租户场景）不够用。</p>
+</li>
+<li><p><strong>虚拟机迁移受限</strong><br>VM 迁移要求二层网络连通，传统架构里二层域被限制在一个汇聚块下，VM 不能跨汇聚块迁移。</p>
+</li>
+</ol>
+<h2 id="二、二层架构的演进——堆叠和-M-LAG"><a href="#二、二层架构的演进——堆叠和-M-LAG" class="headerlink" title="二、二层架构的演进——堆叠和 M-LAG"></a>二、二层架构的演进——堆叠和 M-LAG</h2><p>为了解决 STP 的问题，业界先做了一些改良：</p>
+<h3 id="2-1-设备堆叠（Stacking）"><a href="#2-1-设备堆叠（Stacking）" class="headerlink" title="2.1 设备堆叠（Stacking）"></a>2.1 设备堆叠（Stacking）</h3><p>把多台物理交换机虚拟成一台逻辑交换机，堆叠成员之间用专用堆叠线缆连接。</p>
+<ul>
+<li>优点：管理简单（一台设备的管理面），跨设备链路聚合（EtherChannel），不需要 STP</li>
+<li>缺点：厂商私有协议（华为 iStack、华三 IRF、思科 VSS），不能跨厂商混合堆叠；控制面集中，主设备故障时整堆叠重启；升级需要整堆叠重启</li>
+</ul>
+<h3 id="2-2-M-LAG（Multi-Chassis-Link-Aggregation）"><a href="#2-2-M-LAG（Multi-Chassis-Link-Aggregation）" class="headerlink" title="2.2 M-LAG（Multi-Chassis Link Aggregation）"></a>2.2 M-LAG（Multi-Chassis Link Aggregation）</h3><p>两台交换机组成 M-LAG 对，对下游设备表现为一台交换机，下游可以跨两台设备做链路聚合。但两台交换机的控制面是独立的，通过 M-LAG 协议同步状态。</p>
+<ul>
+<li>优点：控制面独立，单台故障不影响另一台；可以独立升级（ISSU）；比堆叠更可靠</li>
+<li>缺点：配置复杂，需要同步的状态多（MAC、ARP、STP）；厂商私有（华为 M-LAG、华三 DRNI、思科 vPC）；仍然是二层架构，VLAN 数量限制还在</li>
+</ul>
+<h2 id="三、Spine-Leaf-架构"><a href="#三、Spine-Leaf-架构" class="headerlink" title="三、Spine-Leaf 架构"></a>三、Spine-Leaf 架构</h2><p>Spine-Leaf（也叫 CLOS 架构）最早用在数据中心，现在也开始用在大型园区网的核心和汇聚部分。</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><code class="hljs dart">        ┌───────┐  ┌───────┐  ┌───────┐<br>        │ <span class="hljs-title class_">Spine1</span>│  │ <span class="hljs-title class_">Spine2</span>│  │ <span class="hljs-title class_">Spine3</span>│   核心层：只做三层转发<br>        └───┬───┘  └───┬───┘  └───┬───┘<br>            │          │          │<br>     ┌──────┼──────────┼──────────┼──────┐<br>     │      │          │          │      │<br>┌────┴───┐ ┌┴────┐ ┌──┴───┐ ┌───┴──┐ ┌┴─────┐<br>│ <span class="hljs-title class_">Leaf1</span>  │ │<span class="hljs-title class_">Leaf2</span> │ │<span class="hljs-title class_">Leaf3</span> │ │<span class="hljs-title class_">Leaf4</span> │ │<span class="hljs-title class_">Leaf5</span> │   接入/汇聚层：网关、接入<br>└────┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘<br>     │         │         │         │         │<br>  服务器/接入  服务器    服务器    服务器    服务器<br></code></pre></td></tr></table></figure>
+
+<h3 id="核心特点"><a href="#核心特点" class="headerlink" title="核心特点"></a>核心特点</h3><ol>
+<li><strong>全互联</strong>：每个 Leaf 都和每个 Spine 相连，没有阻塞链路，所有链路都在转发</li>
+<li><strong>等价路由（ECMP）</strong>：Leaf 到 Leaf 之间有 N 条等价路径（N &#x3D; Spine 数量），流量自动负载分担</li>
+<li><strong>三层到边缘</strong>：Leaf 和 Spine 之间跑三层路由（OSPF&#x2F;BGP），没有 STP，没有二层环路</li>
+<li><strong>水平扩展</strong>：带宽不够加 Spine，端口不够加 Leaf，不需要替换核心设备</li>
+</ol>
+<h3 id="Spine-Leaf-为什么需要-VXLAN"><a href="#Spine-Leaf-为什么需要-VXLAN" class="headerlink" title="Spine-Leaf 为什么需要 VXLAN"></a>Spine-Leaf 为什么需要 VXLAN</h3><p>Spine-Leaf 本身是三层架构，但园区网里有大量二层需求（VM 迁移、同一 VLAN 跨 Leaf）。纯三层架构下，不同 Leaf 下的同一 VLAN 是不通的。</p>
+<p>解决方案：<strong>在三层网络上用 VXLAN 构建 Overlay 二层网络</strong>。</p>
+<ul>
+<li>Underlay：Spine-Leaf 三层网络，跑 OSPF&#x2F;BGP，负责 IP 连通</li>
+<li>Overlay：VXLAN 隧道，在 Leaf 之间建立，把二层帧封装在 UDP 里传输</li>
+<li>控制面：EVPN（Ethernet VPN），用 BGP 传递 MAC 地址和 ARP 信息，替代传统的泛洪学习</li>
+</ul>
+<h3 id="VXLAN-报文封装"><a href="#VXLAN-报文封装" class="headerlink" title="VXLAN 报文封装"></a>VXLAN 报文封装</h3><figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs dns">| 外层以太网头<span class="hljs-punctuation">(</span><span class="hljs-number">14</span>B<span class="hljs-punctuation">)</span> | 外层IP头<span class="hljs-punctuation">(</span><span class="hljs-number">20</span>B<span class="hljs-punctuation">)</span> | UDP头<span class="hljs-punctuation">(</span><span class="hljs-number">8</span>B<span class="hljs-punctuation">)</span> | VXLAN头<span class="hljs-punctuation">(</span><span class="hljs-number">8</span>B<span class="hljs-punctuation">)</span> | 原始以太网帧 |<br>                                                    ↑<br>                                              VNI<span class="hljs-punctuation">(</span><span class="hljs-number">24</span>位, <span class="hljs-number">1600</span>万个<span class="hljs-punctuation">)</span><br></code></pre></td></tr></table></figure>
+
+<p>VXLAN 用 24 位 VNI 代替 12 位 VLAN ID，支持 1600 万个二层网络，彻底解决 VLAN 数量限制。</p>
+<h3 id="EVPN-控制面"><a href="#EVPN-控制面" class="headerlink" title="EVPN 控制面"></a>EVPN 控制面</h3><p>传统 VXLAN 用数据面学习 MAC（泛洪），效率低。EVPN 用 BGP 作为控制面，Leaf 之间通过 BGP 更新消息交换 MAC 地址：</p>
+<ul>
+<li><strong>Type 2 路由</strong>：MAC&#x2F;IP 通告（Leaf 学到本地 MAC 后，通过 BGP 告诉其他 Leaf）</li>
+<li><strong>Type 3 路由</strong>：Inclusive Multicast（用于 BUM 流量转发，替代泛洪）</li>
+<li><strong>Type 5 路由</strong>：IP 前缀通告（用于三层 VXLAN，跨 VNI 路由）</li>
+</ul>
+<p>EVPN 的优势：</p>
+<ul>
+<li>不需要泛洪学习 MAC，减少广播流量</li>
+<li>支持 ARP 抑制（Leaf 本地代理 ARP，减少广播）</li>
+<li>支持 VM 迁移时的 MAC 移动检测</li>
+<li>统一的二层和三层控制面</li>
+</ul>
+<h2 id="四、实际设计中的取舍"><a href="#四、实际设计中的取舍" class="headerlink" title="四、实际设计中的取舍"></a>四、实际设计中的取舍</h2><h3 id="4-1-中小园区（500人以下）"><a href="#4-1-中小园区（500人以下）" class="headerlink" title="4.1 中小园区（500人以下）"></a>4.1 中小园区（500人以下）</h3><p>不需要 Spine-Leaf，传统三层架构 + M-LAG 就够了：</p>
+<ul>
+<li>核心：2台核心交换机做 M-LAG</li>
+<li>接入：每楼层1-2台接入交换机，双上联到核心</li>
+<li>网关：在核心上做 SVI</li>
+<li>路由：核心到出口跑静态或 OSPF</li>
+</ul>
+<p>简单、可靠、运维成本低。</p>
+<h3 id="4-2-中大型园区（500-5000人）"><a href="#4-2-中大型园区（500-5000人）" class="headerlink" title="4.2 中大型园区（500-5000人）"></a>4.2 中大型园区（500-5000人）</h3><p>核心用 Spine-Leaf，接入层保留传统架构：</p>
+<ul>
+<li>Spine：2-4台高速交换机</li>
+<li>Leaf：每楼层&#x2F;每区域1-2台，作为汇聚+接入</li>
+<li>VXLAN&#x2F;EVPN：在 Leaf 之间构建 Overlay，支持跨区域二层</li>
+<li>无线：AC + AP，AP 二层注册到 AC</li>
+</ul>
+<h3 id="4-3-超大型园区-多园区互联"><a href="#4-3-超大型园区-多园区互联" class="headerlink" title="4.3 超大型园区&#x2F;多园区互联"></a>4.3 超大型园区&#x2F;多园区互联</h3><ul>
+<li>每个园区独立的 Spine-Leaf</li>
+<li>园区之间用 SD-WAN 或 MPLS VPN 互联</li>
+<li>统一的 EVPN 控制面（跨园区的 MAC&#x2F;IP 同步）</li>
+<li>身份驱动的网络（ISE&#x2F;AAA，按用户身份分配 VLAN 和策略）</li>
+</ul>
+<h3 id="4-4-无线网络的融合"><a href="#4-4-无线网络的融合" class="headerlink" title="4.4 无线网络的融合"></a>4.4 无线网络的融合</h3><p>现代园区网里无线流量占比越来越高（很多公司 70%+ 流量是无线），设计时要考虑：</p>
+<ul>
+<li><strong>CAPWAP 隧道</strong>：AP 和 AC 之间用 CAPWAP 封装，AP 只需要二层到 AC 就行</li>
+<li><strong>本地转发 vs 集中转发</strong>：本地转发（数据在 AP 本地解封装）性能好，集中转发（所有数据回 AC）策略统一但 AC 是瓶颈</li>
+<li><strong>Wi-Fi 6&#x2F;7</strong>：高密度场景需要考虑 AP 部署密度、信道规划、漫游</li>
+<li><strong>802.1X</strong>：无线和有线统一认证，按身份分配 VLAN</li>
+</ul>
+<h2 id="五、网络设计的通用原则"><a href="#五、网络设计的通用原则" class="headerlink" title="五、网络设计的通用原则"></a>五、网络设计的通用原则</h2><ol>
+<li><strong>分层设计</strong>：每层职责清晰，不要把接入、网关、策略、安全全堆在一台设备上</li>
+<li><strong>冗余设计</strong>：关键节点双机、链路双上联、电源双路、控制面和数据面分离</li>
+<li><strong>模块化</strong>：按区域&#x2F;楼层&#x2F;业务划分模块，模块之间通过标准接口连接，方便扩展和故障隔离</li>
+<li><strong>可观测性</strong>：设计阶段就要考虑监控（NetFlow&#x2F;sFlow、SNMP、Syslog、链路状态），没有监控的网络就是黑盒</li>
+<li><strong>安全域划分</strong>：办公区、服务器区、DMZ、管理区、生产区，不同安全域之间用防火墙隔离，不要全通</li>
+<li><strong>地址规划</strong>：IP 地址按区域和业务规划，预留扩展空间，不要随便用 192.168.1.0&#x2F;24 这种到处都是的网段</li>
+</ol>
+<h2 id="六、总结"><a href="#六、总结" class="headerlink" title="六、总结"></a>六、总结</h2><p>企业园区网架构从传统三层架构，到堆叠&#x2F;M-LAG 改良，再到 Spine-Leaf + VXLAN&#x2F;EVPN，核心驱动力是：</p>
+<ol>
+<li>带宽需求增长（虚拟化、云计算、无线）</li>
+<li>东西向流量增加（服务器之间、微服务之间）</li>
+<li>灵活性需求（VM 迁移、弹性扩展、多租户）</li>
+</ol>
+<p>但不是所有场景都需要最先进的架构。中小园区用传统三层 + M-LAG 就很好，运维简单、成本低。Spine-Leaf + VXLAN 适合大规模、高带宽、有虚拟化和多租户需求的场景。架构选型的关键是<strong>匹配业务需求，而不是追新技术</strong>。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BC%81%E4%B8%9A%E7%BD%91%E7%BB%9C/" class="category-chain-item">企业网络</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BC%81%E4%B8%9A%E7%BD%91%E7%BB%9C/%E5%9B%AD%E5%8C%BA%E7%BD%91/" class="category-chain-item">园区网</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/%E5%9B%AD%E5%8C%BA%E7%BD%91/" class="print-no-link">#园区网</a>
+      
+        <a href="/tags/%E4%B8%89%E5%B1%82%E6%9E%B6%E6%9E%84/" class="print-no-link">#三层架构</a>
+      
+        <a href="/tags/Spine-Leaf/" class="print-no-link">#Spine-Leaf</a>
+      
+        <a href="/tags/VXLAN/" class="print-no-link">#VXLAN</a>
+      
+        <a href="/tags/EVPN/" class="print-no-link">#EVPN</a>
+      
+        <a href="/tags/%E7%BD%91%E7%BB%9C%E8%AE%BE%E8%AE%A1/" class="print-no-link">#网络设计</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>企业园区网架构设计——从三层架构到 Spine-Leaf</div>
+      <div>https://zhb816.github.io/2026/08/10/enterprise-campus-network-architecture/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年8月10日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/08/15/centos8-nmcli-static-ip/" title="CentOS 8 配置静态IP的正确姿势（nmcli）">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">CentOS 8 配置静态IP的正确姿势（nmcli）</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/08/08/ipsec-vpn-deep-dive/" title="IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用">
+                        <span class="hidden-mobile">IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

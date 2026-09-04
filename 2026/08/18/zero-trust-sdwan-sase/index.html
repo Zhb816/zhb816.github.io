@@ -1,0 +1,999 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="传统网络安全的核心假设是”内网可信，外网不可信”，靠防火墙在边界上做访问控制。但远程办公、云迁移、供应链攻击让这个假设彻底失效了。零信任（Zero Trust）的核心是”从不信任，始终验证”，每一个访问请求都要经过身份认证、设备检查和授权，不管你来自内网还是外网。 这篇文章从零信任的原理讲到和 SD-WAN 的融合，最后看看 SASE 架构是怎么把这两者统一起来的。 一、传统边界安全模型的问题传统">
+<meta property="og:type" content="article">
+<meta property="og:title" content="零信任架构与 SD-WAN 融合——从边界防护到持续验证">
+<meta property="og:url" content="https://zhb816.github.io/2026/08/18/zero-trust-sdwan-sase/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="传统网络安全的核心假设是”内网可信，外网不可信”，靠防火墙在边界上做访问控制。但远程办公、云迁移、供应链攻击让这个假设彻底失效了。零信任（Zero Trust）的核心是”从不信任，始终验证”，每一个访问请求都要经过身份认证、设备检查和授权，不管你来自内网还是外网。 这篇文章从零信任的原理讲到和 SD-WAN 的融合，最后看看 SASE 架构是怎么把这两者统一起来的。 一、传统边界安全模型的问题传统">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-08-18T11:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T07:51:00.109Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="BeyondCorp">
+<meta property="article:tag" content="SASE">
+<meta property="article:tag" content="SD-WAN">
+<meta property="article:tag" content="SDP">
+<meta property="article:tag" content="网络安全">
+<meta property="article:tag" content="零信任">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>零信任架构与 SD-WAN 融合——从边界防护到持续验证 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="零信任架构与 SD-WAN 融合——从边界防护到持续验证"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-08-18 19:00" pubdate>
+          2026年8月18日 晚上
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          4.5k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          38 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">零信任架构与 SD-WAN 融合——从边界防护到持续验证</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>传统网络安全的核心假设是”内网可信，外网不可信”，靠防火墙在边界上做访问控制。但远程办公、云迁移、供应链攻击让这个假设彻底失效了。零信任（Zero Trust）的核心是”从不信任，始终验证”，每一个访问请求都要经过身份认证、设备检查和授权，不管你来自内网还是外网。</p>
+<p>这篇文章从零信任的原理讲到和 SD-WAN 的融合，最后看看 SASE 架构是怎么把这两者统一起来的。</p>
+<h2 id="一、传统边界安全模型的问题"><a href="#一、传统边界安全模型的问题" class="headerlink" title="一、传统边界安全模型的问题"></a>一、传统边界安全模型的问题</h2><p>传统企业网络像一个城堡：</p>
+<ul>
+<li>防火墙是护城河，只允许特定端口和协议进出</li>
+<li>内网是城堡内部，进去之后基本畅通无阻</li>
+<li>VPN 是吊桥，远程用户通过 VPN 进入内网</li>
+</ul>
+<p>这个模型在移动办公和云计算时代有几个致命问题：</p>
+<h3 id="1-1-横向移动无法防护"><a href="#1-1-横向移动无法防护" class="headerlink" title="1.1 横向移动无法防护"></a>1.1 横向移动无法防护</h3><p>一旦攻击者通过钓鱼邮件、漏洞利用等方式进入内网（哪怕只是一台普通员工的电脑），因为”内网可信”，他可以在内网里横向移动，扫描其他服务器，窃取数据。2020 年的 SolarWinds 攻击就是典型案例，攻击者从一个软件更新渠道进入，然后横向渗透到多个政府机构。</p>
+<h3 id="1-2-VPN-是粗粒度的"><a href="#1-2-VPN-是粗粒度的" class="headerlink" title="1.2 VPN 是粗粒度的"></a>1.2 VPN 是粗粒度的</h3><p>传统 VPN 一旦连上，用户就获得了整个内网的访问权限，无法做到”只允许访问某个应用的某个端口”。而且 VPN 客户端本身就是攻击面，2020 年多个主流 VPN 厂商爆出严重漏洞。</p>
+<h3 id="1-3-云应用不在边界内"><a href="#1-3-云应用不在边界内" class="headerlink" title="1.3 云应用不在边界内"></a>1.3 云应用不在边界内</h3><p>企业应用迁移到公有云后，流量不再经过企业边界防火墙，传统的安全策略无法覆盖云应用。用户直接从互联网访问 SaaS 应用，绕过了所有边界防护。</p>
+<h3 id="1-4-远程办公成为常态"><a href="#1-4-远程办公成为常态" class="headerlink" title="1.4 远程办公成为常态"></a>1.4 远程办公成为常态</h3><p>疫情之后，大量员工长期远程办公，VPN 并发数不够、体验差、管理困难。把所有远程流量都拉回企业总部再转发，延迟高、体验差。</p>
+<h2 id="二、零信任的核心原则"><a href="#二、零信任的核心原则" class="headerlink" title="二、零信任的核心原则"></a>二、零信任的核心原则</h2><p>NIST SP 800-207《Zero Trust Architecture》定义了零信任的七个基本原则：</p>
+<ol>
+<li><strong>所有数据源和计算服务都视为资源</strong>——不管是内网服务器、云应用、SaaS，都是需要保护的资源</li>
+<li><strong>所有通信都必须安全，不管来源网络</strong>——内网流量也要加密和认证，不能因为在内网就信任</li>
+<li><strong>对每个企业资源的访问授权是按会话授予的</strong>——不是一次登录永久有效，每次访问都要重新评估</li>
+<li><strong>访问由动态策略决定，包括用户身份、设备状态、请求上下文、行为分析</strong>——多维度评估，不是只看用户名密码</li>
+<li><strong>企业监控和度量所有基础设施的完整性和安全状态</strong>——持续监控设备和网络，发现异常立即响应</li>
+<li><strong>所有资源的身份认证和授权都是动态的，在允许访问之前严格执行</strong>——MFA、设备证书、实时风险评估</li>
+<li><strong>企业尽可能多地收集关于当前网络基础设施和通信状态的信息，用于改进安全态势</strong>——数据驱动的安全运营</li>
+</ol>
+<p>简化成一句话：<strong>每一个访问请求，都要验证”你是谁、你的设备是否安全、你要访问什么、这个访问是否合理”，然后才决定是否允许，而且这个验证是持续的，不是一次性的。</strong></p>
+<h2 id="三、BeyondCorp——谷歌的零信任实践"><a href="#三、BeyondCorp——谷歌的零信任实践" class="headerlink" title="三、BeyondCorp——谷歌的零信任实践"></a>三、BeyondCorp——谷歌的零信任实践</h2><p>谷歌是零信任的先驱，2014 年发布了 BeyondCorp 系列论文，核心思想是<strong>把访问控制从网络层移到应用层</strong>，完全消除内网和外网的区别。</p>
+<h3 id="3-1-核心组件"><a href="#3-1-核心组件" class="headerlink" title="3.1 核心组件"></a>3.1 核心组件</h3><figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs dns">用户/设备 → 访问代理<span class="hljs-punctuation">(</span>Access Proxy<span class="hljs-punctuation">)</span> → 应用<br>                ↑<br>          认证授权系统<br>          <span class="hljs-punctuation">(</span>身份+设备+策略<span class="hljs-punctuation">)</span><br></code></pre></td></tr></table></figure>
+
+<ol>
+<li><strong>设备清单（Device Inventory）</strong>：每台企业设备都有唯一标识，记录设备状态（操作系统版本、是否加密、是否安装安全软件、是否越狱&#x2F;root）</li>
+<li><strong>身份提供商（Identity Provider）</strong>：用户身份认证，支持 SSO 和 MFA</li>
+<li><strong>访问代理（Access Proxy）</strong>：所有应用流量都经过代理，代理在转发请求前调用认证授权系统检查</li>
+<li><strong>访问控制引擎（Access Control Engine）</strong>：根据用户身份、设备信任级别、应用敏感度，动态决定是否允许访问</li>
+<li><strong>流量加密</strong>：所有通信都用 TLS 加密，包括内网流量</li>
+</ol>
+<h3 id="3-2-信任分级"><a href="#3-2-信任分级" class="headerlink" title="3.2 信任分级"></a>3.2 信任分级</h3><p>BeyondCorp 不是简单的”允许&#x2F;拒绝”，而是对设备和用户做<strong>信任分级</strong>：</p>
+<ul>
+<li>设备信任级别：高信任（企业管理、合规、加密）→ 中信任（企业管理但有小问题）→ 低信任（未管理设备）</li>
+<li>应用敏感度：低敏感（内部公告）→ 中敏感（内部工具）→ 高敏感（财务、生产系统）</li>
+</ul>
+<p>访问决策 &#x3D; 用户角色 + 设备信任级别 + 应用敏感度。比如高敏感应用只允许高信任设备从特定网络访问，低敏感应用可以从任何设备访问但需要 MFA。</p>
+<h3 id="3-3-没有-VPN"><a href="#3-3-没有-VPN" class="headerlink" title="3.3 没有 VPN"></a>3.3 没有 VPN</h3><p>BeyondCorp 架构里完全没有 VPN。员工不管在办公室还是在家里，访问应用的方式完全一样：都经过访问代理，都要认证授权。内网和外网没有区别，因为根本不存在”内网”这个概念。</p>
+<h2 id="四、SDP——软件定义边界"><a href="#四、SDP——软件定义边界" class="headerlink" title="四、SDP——软件定义边界"></a>四、SDP——软件定义边界</h2><p>SDP（Software Defined Perimeter）是零信任在网络层的实现，由 Cloud Security Alliance（CSA）提出。核心思想是<strong>先认证后连接</strong>，用户在通过身份认证之前，甚至看不到应用服务器的存在（服务器是”黑暗”的）。</p>
+<h3 id="4-1-SDP-架构"><a href="#4-1-SDP-架构" class="headerlink" title="4.1 SDP 架构"></a>4.1 SDP 架构</h3><figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs dns">SDP 客户端<span class="hljs-punctuation">(</span>IH<span class="hljs-punctuation">)</span> → SDP 控制器 → SDP 网关<span class="hljs-punctuation">(</span>GW<span class="hljs-punctuation">)</span> → 应用服务器<br>     ↑                  ↑<br>   用户认证          策略下发<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>IH（Initiating Host，发起主机）</strong>：安装在用户设备上的 SDP 客户端</li>
+<li><strong>SDP Controller（控制器）</strong>：认证用户和设备，下发策略，管理网关</li>
+<li><strong>GW（Accepting Gateway，接受网关）</strong>：部署在应用前面，默认丢弃所有流量，只接受控制器授权的连接</li>
+</ul>
+<h3 id="4-2-连接建立流程"><a href="#4-2-连接建立流程" class="headerlink" title="4.2 连接建立流程"></a>4.2 连接建立流程</h3><ol>
+<li><strong>IH 向控制器认证</strong>：用户输入凭据（+MFA），IH 发送设备信息（设备证书、操作系统状态、安全软件状态）给控制器</li>
+<li><strong>控制器评估</strong>：验证用户身份、检查设备合规性、根据策略决定允许访问哪些应用</li>
+<li><strong>控制器下发策略</strong>：告诉 IH 可以访问哪些网关，告诉 GW 接受来自这个 IH 的连接（通常是一个临时的加密隧道）</li>
+<li><strong>IH 和 GW 建立加密隧道</strong>：通常用 IPSec 或 TLS&#x2F;DTLS</li>
+<li><strong>用户通过隧道访问应用</strong>：GW 只转发到授权的应用和端口</li>
+</ol>
+<p>关键点：<strong>在第 1-3 步完成之前，GW 对 IH 来说是完全不可见的</strong>，端口扫描扫不到，SYN 包被丢弃。这就是所谓的”黑暗互联网”（Dark Web）概念——不是 Tor 那个暗网，而是服务器对未认证用户完全隐身。</p>
+<h3 id="4-3-SDP-vs-VPN"><a href="#4-3-SDP-vs-VPN" class="headerlink" title="4.3 SDP vs VPN"></a>4.3 SDP vs VPN</h3><table>
+<thead>
+<tr>
+<th>维度</th>
+<th>传统 VPN</th>
+<th>SDP</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>访问粒度</td>
+<td>网络级（连上就能访问整个网段）</td>
+<td>应用级（只能访问授权的应用和端口）</td>
+</tr>
+<tr>
+<td>连接方式</td>
+<td>先连接后认证</td>
+<td>先认证后连接</td>
+</tr>
+<tr>
+<td>服务器可见性</td>
+<td>可见（可以扫描）</td>
+<td>不可见（未认证时完全隐身）</td>
+</tr>
+<tr>
+<td>加密</td>
+<td>隧道加密，但内网流量不加密</td>
+<td>端到端加密</td>
+</tr>
+<tr>
+<td>设备检查</td>
+<td>通常不做或只做基本检查</td>
+<td>持续设备状态评估</td>
+</tr>
+<tr>
+<td>性能</td>
+<td>所有流量走VPN集中器</td>
+<td>可以分布式部署，就近接入</td>
+</tr>
+</tbody></table>
+<h2 id="五、SD-WAN-与零信任的融合——SASE"><a href="#五、SD-WAN-与零信任的融合——SASE" class="headerlink" title="五、SD-WAN 与零信任的融合——SASE"></a>五、SD-WAN 与零信任的融合——SASE</h2><p>SD-WAN 解决的是”怎么连”的问题（智能选路、链路聚合、QoS），零信任解决的是”能不能连”的问题（身份认证、授权、加密）。两者天然互补，融合之后就是 <strong>SASE（Secure Access Service Edge）</strong>。</p>
+<p>Gartner 在 2019 年提出 SASE 概念，把网络服务和安全服务统一到一个云原生的平台上：</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs dns">SASE = SD-WAN + 安全服务栈<span class="hljs-punctuation">(</span>SSE<span class="hljs-punctuation">)</span><br>     = 智能选路 + 链路聚合 + QoS<br>     + SWG<span class="hljs-punctuation">(</span>安全Web网关<span class="hljs-punctuation">)</span> + CASB<span class="hljs-punctuation">(</span>云访问安全代理<span class="hljs-punctuation">)</span><br>     + ZTNA<span class="hljs-punctuation">(</span>零信任网络访问<span class="hljs-punctuation">)</span> + FWaaS<span class="hljs-punctuation">(</span>防火墙即服务<span class="hljs-punctuation">)</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="5-1-SASE-架构"><a href="#5-1-SASE-架构" class="headerlink" title="5.1 SASE 架构"></a>5.1 SASE 架构</h3><figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs dns">用户/分支 → SASE 节点<span class="hljs-punctuation">(</span>PoP<span class="hljs-punctuation">)</span> → 应用/云<br>              ↑<br>        统一策略管理平台<br>        <span class="hljs-punctuation">(</span>身份+设备+应用+网络策略<span class="hljs-punctuation">)</span><br></code></pre></td></tr></table></figure>
+
+<p>SASE 节点（PoP）分布式部署在全球各地，用户就近接入。每个 PoP 同时提供 SD-WAN 功能和安全功能，流量在 PoP 处完成智能选路、安全检查、加密，然后转发到目标。</p>
+<h3 id="5-2-SD-WAN-ZTNA-的融合点"><a href="#5-2-SD-WAN-ZTNA-的融合点" class="headerlink" title="5.2 SD-WAN + ZTNA 的融合点"></a>5.2 SD-WAN + ZTNA 的融合点</h3><ol>
+<li><p><strong>身份感知的选路</strong>：SD-WAN 传统上只看应用类型和链路质量，融合零信任后，可以根据用户身份和设备信任级别选择不同的路径。比如高信任用户的关键业务走 MPLS 专线，低信任设备的流量先走安全检查节点再转发。</p>
+</li>
+<li><p><strong>按身份做微分段</strong>：SD-WAN 的分段（Segmentation）传统上是按 VLAN 或 VRF 做的，融合零信任后，可以按用户身份、设备类型、应用做更细粒度的分段。同一个 VLAN 里，不同用户能访问的资源完全不同。</p>
+</li>
+<li><p><strong>CPE 作为零信任客户端</strong>：分支的 SD-WAN CPE 可以同时作为 SDP 客户端，在建立隧道之前先向控制器认证设备身份（设备证书），认证通过后才建立加密隧道。这样即使 CPE 被物理窃取，没有有效的设备证书也无法接入企业网络。</p>
+</li>
+<li><p><strong>持续验证</strong>：SD-WAN 隧道建立后传统上就一直保持，融合零信任后，隧道生命周期内持续评估设备状态和用户行为，如果发现异常（比如设备突然出现恶意进程、用户行为异常），可以动态断开隧道或降级访问权限。</p>
+</li>
+</ol>
+<h3 id="5-3-实际部署场景"><a href="#5-3-实际部署场景" class="headerlink" title="5.3 实际部署场景"></a>5.3 实际部署场景</h3><p><strong>场景一：远程办公</strong></p>
+<ul>
+<li>员工安装 SASE 客户端（同时是 ZTNA 客户端和 SD-WAN 客户端）</li>
+<li>客户端先做身份认证（SSO + MFA）和设备检查</li>
+<li>认证通过后，客户端和最近的 SASE PoP 建立加密隧道</li>
+<li>访问企业应用时，PoP 做零信任授权检查，然后通过 SD-WAN 智能选路转发到应用</li>
+<li>访问互联网时，PoP 做 SWG 安全检查（URL过滤、杀毒、DLP）</li>
+</ul>
+<p><strong>场景二：分支互联</strong></p>
+<ul>
+<li>分支的 SD-WAN CPE 用设备证书向 SASE 控制器认证</li>
+<li>控制器根据分支身份和策略，授权 CPE 可以访问哪些数据中心和云资源</li>
+<li>CPE 和 SASE PoP 建立 IPSec 隧道，PoP 之间用 SD-WAN 智能选路</li>
+<li>分支到数据中心的流量：PoP 做安全检查（FWaaS），然后通过专线&#x2F;互联网转发</li>
+<li>分支到 SaaS 的流量：本地突破（Local Breakout），不回传数据中心，PoP 做 CASB 检查</li>
+</ul>
+<h2 id="六、落地零信任的挑战"><a href="#六、落地零信任的挑战" class="headerlink" title="六、落地零信任的挑战"></a>六、落地零信任的挑战</h2><p>零信任听起来很美，但落地并不容易：</p>
+<h3 id="6-1-身份是基础"><a href="#6-1-身份是基础" class="headerlink" title="6.1 身份是基础"></a>6.1 身份是基础</h3><p>零信任的核心是身份，没有统一的身份体系（SSO、MFA、目录服务），零信任就是空中楼阁。很多企业的应用还在用本地账号，没有统一认证，这是最大的障碍。</p>
+<h3 id="6-2-设备可见性"><a href="#6-2-设备可见性" class="headerlink" title="6.2 设备可见性"></a>6.2 设备可见性</h3><p>要做设备信任评估，首先得知道企业有哪些设备、每台设备的状态是什么。很多企业连完整的设备清单都没有，更不用说持续监控设备安全状态了。</p>
+<h3 id="6-3-遗留应用"><a href="#6-3-遗留应用" class="headerlink" title="6.3 遗留应用"></a>6.3 遗留应用</h3><p>很多老应用不支持现代认证协议（SAML、OIDC），无法集成到零信任架构里。需要用访问代理（Reverse Proxy）做协议转换，或者用 SDP 网关在网络层做访问控制。</p>
+<h3 id="6-4-性能和体验"><a href="#6-4-性能和体验" class="headerlink" title="6.4 性能和体验"></a>6.4 性能和体验</h3><p>零信任要求每次访问都经过认证授权和安全检查，如果设计不好，会增加延迟、影响用户体验。SASE 用分布式 PoP 和云原生架构来解决这个问题，但自建零信任系统很容易做成”又慢又难用”。</p>
+<h3 id="6-5-渐进式落地"><a href="#6-5-渐进式落地" class="headerlink" title="6.5 渐进式落地"></a>6.5 渐进式落地</h3><p>不要试图一步到位把所有应用都改成零信任。建议的路径：</p>
+<ol>
+<li>先建统一身份（SSO + MFA）</li>
+<li>先从远程办公场景切入，用 ZTNA 替代 VPN</li>
+<li>逐步把高敏感应用接入零信任</li>
+<li>最后覆盖所有应用和分支网络</li>
+</ol>
+<h2 id="七、总结"><a href="#七、总结" class="headerlink" title="七、总结"></a>七、总结</h2><p>零信任不是一个产品，而是一种架构理念。它的核心是把安全边界从”网络边界”移到”身份和设备”，每一个访问请求都要经过多维度的动态验证。</p>
+<p>SD-WAN 和零信任是天然互补的：SD-WAN 提供智能、高效的网络连接，零信任提供安全、细粒度的访问控制。两者融合形成的 SASE 架构，正在成为企业网络和安全的下一代标准。</p>
+<p>对于运维工程师来说，理解零信任和 SASE 很重要，因为未来的网络运维不再只是配路由器和防火墙，而是要管理身份、设备、策略、云服务，网络和安全的边界会越来越模糊。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E5%AE%89%E5%85%A8/" class="category-chain-item">安全</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E5%AE%89%E5%85%A8/%E7%BD%91%E7%BB%9C%E6%9E%B6%E6%9E%84/" class="category-chain-item">网络架构</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/SD-WAN/" class="print-no-link">#SD-WAN</a>
+      
+        <a href="/tags/%E9%9B%B6%E4%BF%A1%E4%BB%BB/" class="print-no-link">#零信任</a>
+      
+        <a href="/tags/SASE/" class="print-no-link">#SASE</a>
+      
+        <a href="/tags/SDP/" class="print-no-link">#SDP</a>
+      
+        <a href="/tags/BeyondCorp/" class="print-no-link">#BeyondCorp</a>
+      
+        <a href="/tags/%E7%BD%91%E7%BB%9C%E5%AE%89%E5%85%A8/" class="print-no-link">#网络安全</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>零信任架构与 SD-WAN 融合——从边界防护到持续验证</div>
+      <div>https://zhb816.github.io/2026/08/18/zero-trust-sdwan-sase/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年8月18日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/08/20/sdwan-cpe-bypass-notes/" title="SD-WAN CPE 旁挂部署踩坑记录">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">SD-WAN CPE 旁挂部署踩坑记录</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/08/15/centos8-nmcli-static-ip/" title="CentOS 8 配置静态IP的正确姿势（nmcli）">
+                        <span class="hidden-mobile">CentOS 8 配置静态IP的正确姿势（nmcli）</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

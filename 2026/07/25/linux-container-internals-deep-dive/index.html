@@ -1,0 +1,1141 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="很多人用了很久 Docker&#x2F;Kubernetes，但对容器的底层原理一知半解，以为容器是轻量级虚拟机。实际上容器根本不是虚拟机，它就是宿主机上的一个普通进程，只不过被 Linux 内核的几个特性”隔离”和”限制”了。这篇文章把容器的三大基石——namespace、cgroup、rootfs——从原理到实战全拆一遍，最后手动用 shell 命令造一个容器。 一、容器到底是什么先破除一个误">
+<meta property="og:type" content="article">
+<meta property="og:title" content="容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器">
+<meta property="og:url" content="https://zhb816.github.io/2026/07/25/linux-container-internals-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="很多人用了很久 Docker&#x2F;Kubernetes，但对容器的底层原理一知半解，以为容器是轻量级虚拟机。实际上容器根本不是虚拟机，它就是宿主机上的一个普通进程，只不过被 Linux 内核的几个特性”隔离”和”限制”了。这篇文章把容器的三大基石——namespace、cgroup、rootfs——从原理到实战全拆一遍，最后手动用 shell 命令造一个容器。 一、容器到底是什么先破除一个误">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-07-25T08:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T08:08:33.880Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="Docker">
+<meta property="article:tag" content="cgroup">
+<meta property="article:tag" content="namespace">
+<meta property="article:tag" content="overlayfs">
+<meta property="article:tag" content="runc">
+<meta property="article:tag" content="容器">
+<meta property="article:tag" content="隔离">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-07-25 16:00" pubdate>
+          2026年7月25日 下午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          13k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          110 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>很多人用了很久 Docker&#x2F;Kubernetes，但对容器的底层原理一知半解，以为容器是轻量级虚拟机。实际上容器根本不是虚拟机，它就是宿主机上的一个普通进程，只不过被 Linux 内核的几个特性”隔离”和”限制”了。这篇文章把容器的三大基石——namespace、cgroup、rootfs——从原理到实战全拆一遍，最后手动用 shell 命令造一个容器。</p>
+<h2 id="一、容器到底是什么"><a href="#一、容器到底是什么" class="headerlink" title="一、容器到底是什么"></a>一、容器到底是什么</h2><p>先破除一个误解：<strong>容器不是虚拟机</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>虚拟机</th>
+<th>容器</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>隔离级别</td>
+<td>硬件级（有独立的 Guest OS 内核）</td>
+<td>进程级（共享宿主机内核）</td>
+</tr>
+<tr>
+<td>启动速度</td>
+<td>分钟级</td>
+<td>毫秒级</td>
+</tr>
+<tr>
+<td>资源开销</td>
+<td>大（整个 Guest OS）</td>
+<td>小（就是一个进程）</td>
+</tr>
+<tr>
+<td>隔离强度</td>
+<td>强（硬件隔离）</td>
+<td>弱（内核特性隔离，有逃逸风险）</td>
+</tr>
+<tr>
+<td>性能</td>
+<td>有虚拟化开销</td>
+<td>接近原生</td>
+</tr>
+</tbody></table>
+<p>容器的本质：<strong>宿主机上的一个进程，通过 namespace 实现视图隔离，通过 cgroup 实现资源限制，通过 rootfs 实现文件系统隔离</strong>。</p>
+<p>Docker 做的事情，本质上就是：</p>
+<ol>
+<li>调用 <code>clone()</code> 系统调用创建进程，同时传入各种 namespace 参数</li>
+<li>把进程加入 cgroup，限制 CPU&#x2F;内存&#x2F;IO</li>
+<li>用 overlayfs 构建容器的根文件系统，<code>pivot_root</code> 切换根目录</li>
+<li>设置 capabilities、seccomp、AppArmor 等安全限制</li>
+<li>启动进程</li>
+</ol>
+<p>runc 是 OCI 运行时规范的参考实现，Docker 底层就是调用 runc 来创建容器的。runc 本质上就是一个封装了上述操作的二进制程序。</p>
+<h2 id="二、namespace——视图隔离"><a href="#二、namespace——视图隔离" class="headerlink" title="二、namespace——视图隔离"></a>二、namespace——视图隔离</h2><p>namespace 是 Linux 内核提供的一种机制，让进程看到的系统资源是隔离的。每个 namespace 里的进程，看到的资源和其他 namespace 里的进程不一样。</p>
+<p>Linux 目前有 8 种 namespace：</p>
+<table>
+<thead>
+<tr>
+<th>namespace</th>
+<th>隔离的资源</th>
+<th>系统调用参数</th>
+<th>内核版本</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Mount</td>
+<td>文件系统挂载点</td>
+<td>CLONE_NEWNS</td>
+<td>2.4.19</td>
+</tr>
+<tr>
+<td>UTS</td>
+<td>主机名和域名</td>
+<td>CLONE_NEWUTS</td>
+<td>2.6.19</td>
+</tr>
+<tr>
+<td>IPC</td>
+<td>信号量、消息队列、共享内存</td>
+<td>CLONE_NEWIPC</td>
+<td>2.6.19</td>
+</tr>
+<tr>
+<td>PID</td>
+<td>进程号</td>
+<td>CLONE_NEWPID</td>
+<td>2.6.24</td>
+</tr>
+<tr>
+<td>Network</td>
+<td>网络栈（网卡、IP、端口、路由表）</td>
+<td>CLONE_NEWNET</td>
+<td>2.6.29</td>
+</tr>
+<tr>
+<td>User</td>
+<td>用户和组 ID</td>
+<td>CLONE_NEWUSER</td>
+<td>3.8</td>
+</tr>
+<tr>
+<td>Cgroup</td>
+<td>cgroup 根目录</td>
+<td>CLONE_NEWCGROUP</td>
+<td>4.6</td>
+</tr>
+<tr>
+<td>Time</td>
+<td>系统时间</td>
+<td>CLONE_NEWTIME</td>
+<td>5.6</td>
+</tr>
+</tbody></table>
+<p>下面逐个详解。</p>
+<h3 id="2-1-Mount-namespace"><a href="#2-1-Mount-namespace" class="headerlink" title="2.1 Mount namespace"></a>2.1 Mount namespace</h3><p>Mount namespace 隔离文件系统的挂载点。每个 mount namespace 里的进程有自己独立的挂载表，在一个 namespace 里挂载&#x2F;卸载文件系统不会影响其他 namespace。</p>
+<p>容器启动时，会创建一个新的 mount namespace，然后把容器的 rootfs 挂载为根目录，这样容器里的进程看到的文件系统就是容器自己的，和宿主机完全隔离。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 查看当前进程的 mount namespace</span><br><span class="hljs-built_in">ls</span> -l /proc/$$/ns/mnt<br><span class="hljs-comment"># lrwxrwxrwx 1 root root 0 ... mnt -&gt; &#x27;mnt:[4026531840]&#x27;</span><br><br><span class="hljs-comment"># 创建一个新的 mount namespace 并执行命令</span><br>unshare --mount bash<br><span class="hljs-comment"># 在新 namespace 里挂载 tmpfs，不影响宿主机</span><br>mount -t tmpfs tmpfs /mnt<br><span class="hljs-built_in">ls</span> /mnt<br><span class="hljs-comment"># 退出后宿主机的 /mnt 不受影响</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="2-2-UTS-namespace"><a href="#2-2-UTS-namespace" class="headerlink" title="2.2 UTS namespace"></a>2.2 UTS namespace</h3><p>UTS（UNIX Time-sharing System）namespace 隔离主机名和域名。每个 UTS namespace 里的进程可以有自己独立的主机名，修改主机名不影响其他 namespace。</p>
+<p>容器里的 <code>hostname</code> 命令看到的就是容器自己的主机名（通常是容器 ID 的前 12 位）。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs bash">unshare --uts bash<br>hostname mycontainer<br>hostname  <span class="hljs-comment"># 显示 mycontainer</span><br><span class="hljs-comment"># 退出后宿主机主机名不变</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="2-3-IPC-namespace"><a href="#2-3-IPC-namespace" class="headerlink" title="2.3 IPC namespace"></a>2.3 IPC namespace</h3><p>IPC namespace 隔离 System V IPC（信号量、消息队列、共享内存）和 POSIX 消息队列。一个 IPC namespace 里的进程创建的 IPC 对象，其他 namespace 里的进程看不到。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 创建 IPC namespace</span><br>unshare --ipc bash<br><span class="hljs-comment"># 创建一个共享内存段</span><br>ipcmk -M 1024<br>ipcs -m  <span class="hljs-comment"># 能看到</span><br><span class="hljs-comment"># 退出后宿主机上看不到这个共享内存段</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="2-4-PID-namespace"><a href="#2-4-PID-namespace" class="headerlink" title="2.4 PID namespace"></a>2.4 PID namespace</h3><p>PID namespace 隔离进程号。每个 PID namespace 里的进程有自己独立的 PID 空间，从 1 开始。PID 1 是该 namespace 里的 init 进程，负责回收僵尸进程。</p>
+<p>PID namespace 是嵌套的，父 namespace 能看到子 namespace 里的所有进程（但 PID 不同），子 namespace 看不到父 namespace 里的进程。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 创建 PID namespace</span><br>unshare --pid --fork --mount-proc bash<br><span class="hljs-comment"># 在新 namespace 里，bash 的 PID 是 1</span><br><span class="hljs-built_in">echo</span> $$<br><span class="hljs-comment"># 1</span><br>ps aux<br><span class="hljs-comment"># 只能看到 namespace 里的进程</span><br><span class="hljs-comment"># 宿主机上能看到这个 bash 进程，但 PID 不同</span><br></code></pre></td></tr></table></figure>
+
+<p>注意：PID namespace 必须配合 <code>--fork</code>（unshare 先 fork 一个子进程，子进程进入新 namespace）和 <code>--mount-proc</code>（重新挂载 &#x2F;proc，否则 ps 命令看到的还是宿主机的进程）。</p>
+<h3 id="2-5-Network-namespace"><a href="#2-5-Network-namespace" class="headerlink" title="2.5 Network namespace"></a>2.5 Network namespace</h3><p>Network namespace 隔离整个网络栈：网卡、IP 地址、端口、路由表、iptables 规则、&#x2F;proc&#x2F;net 目录等。每个 network namespace 有自己独立的网络栈，默认只有一个 lo 回环接口。</p>
+<p>容器的网络隔离就是靠 network namespace 实现的。Docker 创建容器时：</p>
+<ol>
+<li>创建一个新的 network namespace</li>
+<li>创建一对 veth pair，一端放在容器 namespace（命名为 eth0），另一端放在宿主机（命名为 vethXXX），接到 docker0 网桥上</li>
+<li>给容器的 eth0 分配 IP，设置默认路由</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 创建 network namespace</span><br>ip netns add myns<br><span class="hljs-comment"># 查看 namespace 里的网卡（只有 lo）</span><br>ip netns <span class="hljs-built_in">exec</span> myns ip <span class="hljs-built_in">link</span> show<br><span class="hljs-comment"># 创建 veth pair</span><br>ip <span class="hljs-built_in">link</span> add veth0 <span class="hljs-built_in">type</span> veth peer name veth1<br><span class="hljs-comment"># 把 veth1 放入 namespace</span><br>ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> veth1 netns myns<br><span class="hljs-comment"># 配置 IP</span><br>ip addr add 10.0.0.1/24 dev veth0<br>ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> veth0 up<br>ip netns <span class="hljs-built_in">exec</span> myns ip addr add 10.0.0.2/24 dev veth1<br>ip netns <span class="hljs-built_in">exec</span> myns ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> veth1 up<br>ip netns <span class="hljs-built_in">exec</span> myns ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> lo up<br><span class="hljs-comment"># 测试连通</span><br>ip netns <span class="hljs-built_in">exec</span> myns ping 10.0.0.1<br><span class="hljs-comment"># 清理</span><br>ip netns del myns<br></code></pre></td></tr></table></figure>
+
+<h3 id="2-6-User-namespace"><a href="#2-6-User-namespace" class="headerlink" title="2.6 User namespace"></a>2.6 User namespace</h3><p>User namespace 隔离用户和组 ID。一个在 user namespace 里的进程，可以在 namespace 里是 root（UID 0），但在宿主机上是一个普通用户（非特权 UID）。</p>
+<p>这是容器安全的关键：容器里的 root 不是真正的宿主机 root，即使容器被攻破，攻击者拿到的也只是宿主机上的普通用户权限，攻击面大大减小。</p>
+<p>User namespace 还允许非特权用户创建其他 namespace（mount、PID、network 等），这是 rootless 容器（podman rootless、nerdctl rootless）的基础。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 映射当前用户到 namespace 里的 root</span><br>unshare --user --map-root-user bash<br><span class="hljs-comment"># 在 namespace 里是 root</span><br><span class="hljs-built_in">id</span><br><span class="hljs-comment"># uid=0(root) gid=0(root) groups=0(root)</span><br><span class="hljs-comment"># 但在宿主机上还是普通用户</span><br><span class="hljs-comment"># 可以在 namespace 里创建 mount namespace（不需要宿主机 root）</span><br>unshare --mount bash<br></code></pre></td></tr></table></figure>
+
+<p>User namespace 的 ID 映射通过 <code>/proc/&lt;pid&gt;/uid_map</code> 和 <code>/proc/&lt;pid&gt;/gid_map</code> 配置，格式是：<code>namespace_id host_id length</code>，比如 <code>0 1000 1</code> 表示 namespace 里的 UID 0 映射到宿主机的 UID 1000。</p>
+<h3 id="2-7-Cgroup-namespace"><a href="#2-7-Cgroup-namespace" class="headerlink" title="2.7 Cgroup namespace"></a>2.7 Cgroup namespace</h3><p>Cgroup namespace 隔离 cgroup 根目录视图。在 cgroup namespace 里的进程，看到的 <code>/proc/self/cgroup</code> 是从该 namespace 的 cgroup 根开始的，而不是宿主机的 cgroup 根。这样容器里的进程看不到自己在宿主机 cgroup 层级中的位置，也看不到其他容器的 cgroup。</p>
+<h3 id="2-8-Time-namespace"><a href="#2-8-Time-namespace" class="headerlink" title="2.8 Time namespace"></a>2.8 Time namespace</h3><p>Time namespace 隔离系统时间。允许进程在 namespace 里看到不同的系统时间（通过偏移量实现），主要用于容器迁移（把容器从一台机器迁移到另一台机器时，保持时间一致）和测试（模拟时间流逝）。</p>
+<h2 id="三、cgroup——资源限制"><a href="#三、cgroup——资源限制" class="headerlink" title="三、cgroup——资源限制"></a>三、cgroup——资源限制</h2><p>namespace 解决的是”能看到什么”的问题（视图隔离），cgroup 解决的是”能用多少”的问题（资源限制）。</p>
+<p>cgroup（Control Groups）是 Linux 内核提供的一种机制，用来把进程组织成层级的任务组，对每组进程进行资源限制、统计和控制。</p>
+<h3 id="3-1-cgroup-v1-vs-v2"><a href="#3-1-cgroup-v1-vs-v2" class="headerlink" title="3.1 cgroup v1 vs v2"></a>3.1 cgroup v1 vs v2</h3><p>cgroup 有两个版本：</p>
+<p><strong>cgroup v1</strong>：</p>
+<ul>
+<li>每种资源（CPU、内存、IO 等）有独立的层级（hierarchy），可以分别挂载</li>
+<li>控制器（controller）多，但配置复杂，不同控制器的层级可以不一致</li>
+<li>进程可以在不同控制器的不同 cgroup 里（一个进程的 CPU 在 cgroup A，内存在 cgroup B）</li>
+<li>历史悠久，兼容性好，但设计上有很多问题</li>
+</ul>
+<p><strong>cgroup v2</strong>（统一层级）：</p>
+<ul>
+<li>所有控制器共享同一个层级（unified hierarchy），挂载在 <code>/sys/fs/cgroup</code></li>
+<li>一个进程在 cgroup 层级里只有一个位置，所有控制器对这个位置生效</li>
+<li>配置更简单，语义更清晰，支持更多新特性（如 cgroup namespace、PSI）</li>
+<li>内核 4.5 引入，5.2+ 稳定，现在主流发行版（Ubuntu 22.04、CentOS Stream 9、Fedora）默认用 v2</li>
+</ul>
+<p>cgroup v2 的目录结构：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><code class="hljs python">/sys/fs/cgroup/<br>├── cgroup.controllers      <span class="hljs-comment"># 可用的控制器列表</span><br>├── cgroup.subtree_control  <span class="hljs-comment"># 子 cgroup 启用的控制器</span><br>├── cgroup.procs            <span class="hljs-comment"># 这个 cgroup 里的进程 PID</span><br>├── cgroup.<span class="hljs-built_in">max</span>.descendants  <span class="hljs-comment"># 最大子 cgroup 数</span><br>├── cgroup.<span class="hljs-built_in">max</span>.depth        <span class="hljs-comment"># 最大层级深度</span><br>├── cgroup.stat             <span class="hljs-comment"># 统计信息</span><br>├── cgroup.threads          <span class="hljs-comment"># 线程（线程模式）</span><br>├── docker/                  <span class="hljs-comment"># Docker 的 cgroup</span><br>│   ├── cgroup.procs<br>│   ├── cpu.<span class="hljs-built_in">max</span>              <span class="hljs-comment"># CPU 限制</span><br>│   ├── memory.<span class="hljs-built_in">max</span>           <span class="hljs-comment"># 内存限制</span><br>│   ├── io.<span class="hljs-built_in">max</span>               <span class="hljs-comment"># IO 限制</span><br>│   └── &lt;container-<span class="hljs-built_in">id</span>&gt;/      <span class="hljs-comment"># 每个容器一个子 cgroup</span><br>│       ├── cgroup.procs<br>│       ├── cpu.<span class="hljs-built_in">max</span><br>│       └── memory.<span class="hljs-built_in">max</span><br>└── system.<span class="hljs-built_in">slice</span>/            <span class="hljs-comment"># systemd 服务的 cgroup</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="3-2-常用控制器"><a href="#3-2-常用控制器" class="headerlink" title="3.2 常用控制器"></a>3.2 常用控制器</h3><p><strong>CPU 控制器</strong>：</p>
+<ul>
+<li><code>cpu.max</code>：限制 CPU 使用量，格式 <code>$MAX $PERIOD</code>，比如 <code>50000 100000</code> 表示在 100ms 周期内最多用 50ms，即 0.5 核</li>
+<li><code>cpu.weight</code>：CPU 权重（1-10000，默认 100），在 CPU 竞争时按权重分配</li>
+<li><code>cpu.stat</code>：CPU 使用统计（user、system、nr_periods、nr_throttled、throttled_time）</li>
+</ul>
+<p><strong>内存控制器</strong>：</p>
+<ul>
+<li><code>memory.max</code>：最大内存使用量（字节），超过会触发 OOM killer</li>
+<li><code>memory.high</code>：内存软限制，超过后内核会尽量回收内存，进程会被减速（ throttle），但不会 OOM</li>
+<li><code>memory.low</code>：内存保护，低于这个值的内存不会被回收（在内存压力时保护这个 cgroup）</li>
+<li><code>memory.swap.max</code>：swap 使用限制</li>
+<li><code>memory.stat</code>：内存统计（anon、file、kernel_stack、slab、sock、shmem 等）</li>
+<li><code>memory.oom.group</code>：OOM 时是否杀掉整个 cgroup 里的所有进程（而不是只杀一个）</li>
+</ul>
+<p><strong>IO 控制器</strong>：</p>
+<ul>
+<li><code>io.max</code>：限制 IO 速率，格式 <code>$MAJ:$MIN rbps=$READ wbps=$WRITE riops=$READ_IOPS wiops=$WRITE_IOPS</code></li>
+<li><code>io.weight</code>：IO 权重（1-10000，默认 100）</li>
+<li><code>io.stat</code>：IO 统计</li>
+</ul>
+<p><strong>进程号控制器（pids）</strong>：</p>
+<ul>
+<li><code>pids.max</code>：最大进程&#x2F;线程数，防止 fork 炸弹</li>
+</ul>
+<h3 id="3-3-手动创建-cgroup-并限制资源"><a href="#3-3-手动创建-cgroup-并限制资源" class="headerlink" title="3.3 手动创建 cgroup 并限制资源"></a>3.3 手动创建 cgroup 并限制资源</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 创建一个 cgroup</span><br><span class="hljs-built_in">mkdir</span> /sys/fs/cgroup/mygroup<br><span class="hljs-comment"># 启用 CPU 和内存控制器（在父 cgroup 里设置）</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;+cpu +memory&quot;</span> &gt; /sys/fs/cgroup/cgroup.subtree_control<br><span class="hljs-comment"># 限制 CPU 为 0.5 核</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;50000 100000&quot;</span> &gt; /sys/fs/cgroup/mygroup/cpu.max<br><span class="hljs-comment"># 限制内存为 100M</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;104857600&quot;</span> &gt; /sys/fs/cgroup/mygroup/memory.max<br><span class="hljs-comment"># 限制进程数为 100</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;100&quot;</span> &gt; /sys/fs/cgroup/mygroup/pids.max<br><span class="hljs-comment"># 把当前 shell 加入 cgroup</span><br><span class="hljs-built_in">echo</span> $$ &gt; /sys/fs/cgroup/mygroup/cgroup.procs<br><span class="hljs-comment"># 验证</span><br><span class="hljs-built_in">cat</span> /proc/self/cgroup<br><span class="hljs-comment"># 0::/mygroup</span><br><span class="hljs-comment"># 测试内存限制（会被 OOM kill）</span><br><span class="hljs-comment"># stress --vm 1 --vm-bytes 200M</span><br><span class="hljs-comment"># 清理</span><br><span class="hljs-built_in">exit</span>  <span class="hljs-comment"># 退出 shell，进程从 cgroup 移除</span><br><span class="hljs-built_in">rmdir</span> /sys/fs/cgroup/mygroup<br></code></pre></td></tr></table></figure>
+
+<h3 id="3-4-PSI（Pressure-Stall-Information）"><a href="#3-4-PSI（Pressure-Stall-Information）" class="headerlink" title="3.4 PSI（Pressure Stall Information）"></a>3.4 PSI（Pressure Stall Information）</h3><p>PSI 是 cgroup v2 引入的特性，用来度量资源压力（CPU、内存、IO），即”有多少时间因为资源不足而导致任务等待”。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 查看系统级 CPU 压力</span><br><span class="hljs-built_in">cat</span> /proc/pressure/cpu<br><span class="hljs-comment"># some avg10=0.00 avg60=0.00 avg300=0.00 total=0</span><br><span class="hljs-comment"># some 表示有任务在等待，full 表示所有任务都在等待</span><br><br><span class="hljs-comment"># 查看某个 cgroup 的内存压力</span><br><span class="hljs-built_in">cat</span> /sys/fs/cgroup/mygroup/memory.pressure<br></code></pre></td></tr></table></figure>
+
+<p>PSI 可以用来做资源压力感知的自动扩缩容（比如 Kubernetes 的基于压力的调度），比单纯看 CPU 使用率更准确（CPU 使用率 100% 不一定有压力，可能是计算密集型任务；PSI 高才说明真的有任务在等资源）。</p>
+<h2 id="四、rootfs-和-overlayfs——文件系统隔离"><a href="#四、rootfs-和-overlayfs——文件系统隔离" class="headerlink" title="四、rootfs 和 overlayfs——文件系统隔离"></a>四、rootfs 和 overlayfs——文件系统隔离</h2><p>namespace 隔离了挂载视图，但容器里的进程还需要一个独立的根文件系统（rootfs），否则它看到的还是宿主机的文件系统。</p>
+<h3 id="4-1-rootfs-是什么"><a href="#4-1-rootfs-是什么" class="headerlink" title="4.1 rootfs 是什么"></a>4.1 rootfs 是什么</h3><p>rootfs 就是容器的根目录 <code>/</code> 里的所有文件，包括：</p>
+<ul>
+<li><code>/bin</code>、<code>/sbin</code>：可执行文件</li>
+<li><code>/lib</code>、<code>/lib64</code>：共享库</li>
+<li><code>/etc</code>：配置文件</li>
+<li><code>/usr</code>：用户程序</li>
+<li><code>/var</code>：可变数据</li>
+<li><code>/dev</code>、<code>/proc</code>、<code>/sys</code>：特殊文件系统（运行时挂载）</li>
+</ul>
+<p>Docker 镜像本质上就是一个 rootfs 的打包（加上一些元数据）。Alpine 镜像的 rootfs 只有几 MB，Ubuntu 镜像的 rootfs 有几十 MB。</p>
+<h3 id="4-2-overlayfs——联合文件系统"><a href="#4-2-overlayfs——联合文件系统" class="headerlink" title="4.2 overlayfs——联合文件系统"></a>4.2 overlayfs——联合文件系统</h3><p>容器的 rootfs 不是简单地把镜像解压到一个目录，而是用 overlayfs（联合挂载文件系统）把多个层（layer）联合挂载成一个根文件系统。</p>
+<p>overlayfs 的核心概念：</p>
+<ul>
+<li><strong>lowerdir</strong>：只读层，镜像的层（可以有多个，从下到上叠加）</li>
+<li><strong>upperdir</strong>：可写层，容器运行时的修改都写在这里</li>
+<li><strong>workdir</strong>：工作目录，overlayfs 内部使用（必须和 upperdir 在同一个文件系统上）</li>
+<li><strong>merged</strong>：联合挂载后的视图，lowerdir + upperdir 的合并结果</li>
+</ul>
+<figure class="highlight gradle"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><code class="hljs gradle">镜像层（只读，lowerdir）<br>├── layer1: 基础系统（<span class="hljs-regexp">/bin, /</span>lib, /etc）<br>├── layer2: 安装 nginx（<span class="hljs-regexp">/usr/</span>sbin<span class="hljs-regexp">/nginx, /</span>etc/nginx）<br>└── layer3: 配置文件（<span class="hljs-regexp">/etc/</span>nginx/nginx.conf）<br>         │<br>         ▼ 联合挂载<br>┌─────────────────────────┐<br>│  merged（容器看到的根目录） │<br>│  读取：先查 upperdir，     │<br>│        没有再查 lowerdir   │<br>│  写入：只写 upperdir       │<br>│  删除：在 upperdir 创建    │<br>│        whiteout 文件       │<br>└─────────────────────────┘<br>         │<br>         ▼<br>upperdir（可写层，容器的修改）<br>├── <span class="hljs-regexp">/etc/</span>nginx/nginx.conf（修改了配置，<span class="hljs-keyword">copy</span>-up 到这里）<br>├── <span class="hljs-regexp">/var/</span>log<span class="hljs-regexp">/nginx/</span>access.log（新创建的文件）<br>└── <span class="hljs-regexp">/etc/</span>nginx<span class="hljs-regexp">/conf.d/</span><span class="hljs-keyword">default</span>.conf（删除了文件，创建 whiteout）<br></code></pre></td></tr></table></figure>
+
+<p><strong>关键机制</strong>：</p>
+<ol>
+<li><strong>Copy-up（写时复制）</strong>：读取文件时，如果文件在 upperdir 里没有，就从 lowerdir 读；修改文件时，先把文件从 lowerdir 拷贝到 upperdir，然后在 upperdir 上修改。这样 lowerdir 永远不会被修改。</li>
+<li><strong>Whiteout（隐藏）</strong>：删除文件时，在 upperdir 里创建一个特殊的字符设备文件（名为 <code>.wh.&lt;filename&gt;</code>），overlayfs 看到这个文件就知道对应的 lowerdir 文件被”删除”了，在 merged 视图里不显示。</li>
+<li><strong>Opaque directory（不透明目录）</strong>：删除整个目录时，在 upperdir 里创建目录并设置 <code>trusted.overlay.opaque</code> 扩展属性，overlayfs 看到这个属性就知道这个目录是不透明的，lowerdir 里的同名目录内容被完全隐藏。</li>
+</ol>
+<p>Docker 的镜像分层就是基于 overlayfs 的：每个 Dockerfile 指令（RUN、COPY、ADD 等）创建一个新的层（lowerdir），层是只读的，多个镜像可以共享相同的层（节省存储空间）。容器启动时，在镜像层之上加一个可写层（upperdir），容器的所有修改都在可写层里，删除容器时可写层也被删除，镜像层保持不变。</p>
+<h3 id="4-3-pivot-root——切换根目录"><a href="#4-3-pivot-root——切换根目录" class="headerlink" title="4.3 pivot_root——切换根目录"></a>4.3 pivot_root——切换根目录</h3><p>有了 rootfs 之后，还需要把容器进程的根目录从宿主机的 <code>/</code> 切换到容器的 rootfs。这通过 <code>pivot_root</code> 系统调用实现。</p>
+<p><code>pivot_root</code> 把当前进程的根文件系统切换到新的目录，同时把旧的根文件系统移动到一个子目录下（通常是 <code>/.oldroot</code>），之后可以卸载旧根。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 手动 pivot_root 示例</span><br><span class="hljs-comment"># 假设 rootfs 在 /tmp/rootfs</span><br><span class="hljs-built_in">cd</span> /tmp/rootfs<br><span class="hljs-built_in">mkdir</span> -p .oldroot<br><span class="hljs-comment"># 把当前根挂载为私有（防止 pivot_root 影响其他进程）</span><br>mount --make-rprivate /<br><span class="hljs-comment"># 切换根</span><br>pivot_root . .oldroot<br><span class="hljs-comment"># 切换工作目录到新根</span><br><span class="hljs-built_in">cd</span> /<br><span class="hljs-comment"># 卸载旧根</span><br>umount -l /.oldroot<br><span class="hljs-built_in">rmdir</span> /.oldroot<br><span class="hljs-comment"># 现在进程的根目录就是 /tmp/rootfs 了</span><br></code></pre></td></tr></table></figure>
+
+<p><code>chroot</code> 也能改变进程的根目录视图，但 <code>chroot</code> 只是改变了 <code>/</code> 的解析，进程仍然可以通过其他方式访问宿主机文件系统（比如通过已经打开的文件描述符、通过 <code>/proc/self/root</code> 等）。<code>pivot_root</code> 是真正的根文件系统切换，更安全，容器用的是 <code>pivot_root</code> 而不是 <code>chroot</code>。</p>
+<h2 id="五、容器安全——capabilities、seccomp、AppArmor"><a href="#五、容器安全——capabilities、seccomp、AppArmor" class="headerlink" title="五、容器安全——capabilities、seccomp、AppArmor"></a>五、容器安全——capabilities、seccomp、AppArmor</h2><p>除了 namespace 和 cgroup，容器还通过以下机制增强安全性：</p>
+<h3 id="5-1-Linux-capabilities"><a href="#5-1-Linux-capabilities" class="headerlink" title="5.1 Linux capabilities"></a>5.1 Linux capabilities</h3><p>传统的 Unix 权限模型是二元的：root（UID 0）拥有所有权限，普通用户没有任何特权。capabilities 把 root 的特权拆分成了几十个独立的能力，可以单独授予或撤销。</p>
+<p>容器默认只授予一小部分 capabilities（而不是全部），即使容器里的进程以 root 运行，它的能力也远小于宿主机的 root。</p>
+<p>常用的 capabilities：</p>
+<ul>
+<li><code>CAP_NET_ADMIN</code>：网络管理（配置网卡、路由、iptables）</li>
+<li><code>CAP_NET_BIND_SERVICE</code>：绑定 1024 以下的端口</li>
+<li><code>CAP_SYS_ADMIN</code>：系统管理（挂载、命名空间操作等，非常危险，默认不授予）</li>
+<li><code>CAP_SYS_PTRACE</code>：ptrace 其他进程</li>
+<li><code>CAP_MKNOD</code>：创建设备节点</li>
+<li><code>CAP_SYS_MODULE</code>：加载&#x2F;卸载内核模块</li>
+</ul>
+<p>Docker 默认授予的 capabilities：<code>CAP_CHOWN</code>, <code>CAP_DAC_OVERRIDE</code>, <code>CAP_FOWNER</code>, <code>CAP_FSETID</code>, <code>CAP_KILL</code>, <code>CAP_SETGID</code>, <code>CAP_SETUID</code>, <code>CAP_SETPCAP</code>, <code>CAP_NET_BIND_SERVICE</code>, <code>CAP_NET_RAW</code>, <code>CAP_SYS_CHROOT</code>, <code>CAP_MKNOD</code>, <code>CAP_AUDIT_WRITE</code>, <code>CAP_SETFCAP</code>。</p>
+<p>可以通过 <code>--cap-add</code> 和 <code>--cap-drop</code> 调整：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 去掉所有 capabilities，只加 NET_BIND_SERVICE</span><br>docker run --cap-drop ALL --cap-add NET_BIND_SERVICE nginx<br></code></pre></td></tr></table></figure>
+
+<h3 id="5-2-seccomp"><a href="#5-2-seccomp" class="headerlink" title="5.2 seccomp"></a>5.2 seccomp</h3><p>seccomp（secure computing mode）限制进程可以调用的系统调用。容器默认有一个 seccomp 配置文件，禁止调用一些危险的系统调用（比如 <code>mount</code>, <code>ptrace</code>, <code>kexec_load</code>, <code>reboot</code> 等），减少内核攻击面。</p>
+<p>seccomp 用 BPF 过滤器实现，在内核的系统调用入口处检查，如果调用的系统调用在黑名单里，就返回错误（通常是 EPERM）或杀掉进程。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 查看容器的 seccomp 状态</span><br>docker run --<span class="hljs-built_in">rm</span> alpine grep Seccomp /proc/status<br><span class="hljs-comment"># Seccomp:	2  (2 表示 SECCOMP_MODE_FILTER)</span><br><br><span class="hljs-comment"># 自定义 seccomp 配置</span><br>docker run --security-opt seccomp=myseccomp.json nginx<br></code></pre></td></tr></table></figure>
+
+<h3 id="5-3-AppArmor-SELinux"><a href="#5-3-AppArmor-SELinux" class="headerlink" title="5.3 AppArmor &#x2F; SELinux"></a>5.3 AppArmor &#x2F; SELinux</h3><p>AppArmor（Ubuntu&#x2F;Debian 默认）和 SELinux（RHEL&#x2F;CentOS 默认）是强制访问控制（MAC）系统，可以限制进程对文件、网络、能力的访问，即使进程以 root 运行也受限制。</p>
+<p>Docker 默认给容器加载一个 AppArmor 配置文件（<code>docker-default</code>），限制容器的访问范围。</p>
+<h2 id="六、手动造一个容器"><a href="#六、手动造一个容器" class="headerlink" title="六、手动造一个容器"></a>六、手动造一个容器</h2><p>理论讲完了，现在手动用 shell 命令造一个最小的容器，体验一下 Docker 底层做了什么。</p>
+<h3 id="6-1-准备-rootfs"><a href="#6-1-准备-rootfs" class="headerlink" title="6.1 准备 rootfs"></a>6.1 准备 rootfs</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 用 docker 导出一个最小的 rootfs（或者用 debootstrap 构建）</span><br><span class="hljs-built_in">mkdir</span> -p /tmp/mycontainer/rootfs<br>docker <span class="hljs-built_in">export</span> $(docker create alpine) | tar -C /tmp/mycontainer/rootfs -xf -<br><span class="hljs-comment"># 现在 /tmp/mycontainer/rootfs 里有 Alpine 的 rootfs</span><br><span class="hljs-built_in">ls</span> /tmp/mycontainer/rootfs<br><span class="hljs-comment"># bin  dev  etc  home  lib  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="6-2-创建-cgroup-限制资源"><a href="#6-2-创建-cgroup-限制资源" class="headerlink" title="6.2 创建 cgroup 限制资源"></a>6.2 创建 cgroup 限制资源</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 创建 cgroup</span><br><span class="hljs-built_in">mkdir</span> /sys/fs/cgroup/mycontainer<br><span class="hljs-comment"># 启用控制器（如果还没启用）</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;+cpu +memory +pids&quot;</span> &gt; /sys/fs/cgroup/cgroup.subtree_control<br><span class="hljs-comment"># 限制 CPU 1 核</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;100000 100000&quot;</span> &gt; /sys/fs/cgroup/mycontainer/cpu.max<br><span class="hljs-comment"># 限制内存 256M</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;268435456&quot;</span> &gt; /sys/fs/cgroup/mycontainer/memory.max<br><span class="hljs-comment"># 限制进程数 100</span><br><span class="hljs-built_in">echo</span> <span class="hljs-string">&quot;100&quot;</span> &gt; /sys/fs/cgroup/mycontainer/pids.max<br></code></pre></td></tr></table></figure>
+
+<h3 id="6-3-创建网络"><a href="#6-3-创建网络" class="headerlink" title="6.3 创建网络"></a>6.3 创建网络</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 创建 network namespace</span><br>ip netns add mycontainer<br><span class="hljs-comment"># 创建 veth pair</span><br>ip <span class="hljs-built_in">link</span> add veth-host <span class="hljs-built_in">type</span> veth peer name veth-container<br><span class="hljs-comment"># 把容器端放入 namespace</span><br>ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> veth-container netns mycontainer<br><span class="hljs-comment"># 配置 IP</span><br>ip addr add 10.88.0.1/24 dev veth-host<br>ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> veth-host up<br>ip netns <span class="hljs-built_in">exec</span> mycontainer ip addr add 10.88.0.2/24 dev veth-container<br>ip netns <span class="hljs-built_in">exec</span> mycontainer ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> veth-container up<br>ip netns <span class="hljs-built_in">exec</span> mycontainer ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> lo up<br>ip netns <span class="hljs-built_in">exec</span> mycontainer ip route add default via 10.88.0.1<br><span class="hljs-comment"># 配置 NAT（让容器能上网）</span><br>iptables -t nat -A POSTROUTING -s 10.88.0.0/24 -j MASQUERADE<br><span class="hljs-built_in">echo</span> 1 &gt; /proc/sys/net/ipv4/ip_forward<br></code></pre></td></tr></table></figure>
+
+<h3 id="6-4-启动容器进程"><a href="#6-4-启动容器进程" class="headerlink" title="6.4 启动容器进程"></a>6.4 启动容器进程</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 用 unshare 创建所有 namespace，加入 cgroup，pivot_root，启动 sh</span><br><span class="hljs-built_in">cd</span> /tmp/mycontainer/rootfs<br><span class="hljs-built_in">mkdir</span> -p .oldroot<br><br><span class="hljs-comment"># 把启动命令写成脚本</span><br><span class="hljs-built_in">cat</span> &gt; /tmp/mycontainer/start.sh &lt;&lt; <span class="hljs-string">&#x27;EOF&#x27;</span><br><span class="hljs-comment">#!/bin/bash</span><br><span class="hljs-comment"># 挂载 proc 和 sys</span><br>mount -t proc proc /proc<br>mount -t sysfs sys /sys<br>mount -t tmpfs tmp /tmp<br>mount -t devtmpfs dev /dev<br><span class="hljs-comment"># 设置主机名</span><br>hostname mycontainer<br><span class="hljs-comment"># 启动 shell</span><br><span class="hljs-built_in">exec</span> /bin/sh<br>EOF<br><span class="hljs-built_in">chmod</span> +x /tmp/mycontainer/start.sh<br><span class="hljs-built_in">cp</span> /tmp/mycontainer/start.sh /tmp/mycontainer/rootfs/start.sh<br><br><span class="hljs-comment"># 启动容器：创建所有 namespace + 加入 cgroup + pivot_root</span><br>unshare --pid --uts --ipc --mount --net=/var/run/netns/mycontainer \<br>  --fork --mount-proc \<br>  bash -c <span class="hljs-string">&#x27;</span><br><span class="hljs-string">    # 加入 cgroup</span><br><span class="hljs-string">    echo $$ &gt; /sys/fs/cgroup/mycontainer/cgroup.procs</span><br><span class="hljs-string">    # pivot_root</span><br><span class="hljs-string">    cd /tmp/mycontainer/rootfs</span><br><span class="hljs-string">    mount --make-rprivate /</span><br><span class="hljs-string">    pivot_root . .oldroot</span><br><span class="hljs-string">    cd /</span><br><span class="hljs-string">    umount -l /.oldroot</span><br><span class="hljs-string">    # 启动容器</span><br><span class="hljs-string">    exec /start.sh</span><br><span class="hljs-string">  &#x27;</span><br></code></pre></td></tr></table></figure>
+
+<p>执行后，你就进入了一个手动创建的容器：</p>
+<ul>
+<li>有独立的主机名（mycontainer）</li>
+<li>有独立的网络（10.88.0.2，能上网）</li>
+<li>有独立的进程空间（PID 从 1 开始）</li>
+<li>有独立的文件系统（Alpine rootfs）</li>
+<li>有 CPU&#x2F;内存&#x2F;进程数限制</li>
+</ul>
+<p>这就是 Docker 容器的本质，Docker 只是把这些操作封装成了一个命令（<code>docker run</code>），加上了镜像管理、镜像分层、网络管理、日志管理等功能。</p>
+<h3 id="6-5-清理"><a href="#6-5-清理" class="headerlink" title="6.5 清理"></a>6.5 清理</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 退出容器后清理</span><br>ip netns del mycontainer<br>ip <span class="hljs-built_in">link</span> del veth-host<br><span class="hljs-built_in">rm</span> -rf /tmp/mycontainer<br><span class="hljs-built_in">rmdir</span> /sys/fs/cgroup/mycontainer<br>iptables -t nat -D POSTROUTING -s 10.88.0.0/24 -j MASQUERADE<br></code></pre></td></tr></table></figure>
+
+<h2 id="七、容器的局限性和安全风险"><a href="#七、容器的局限性和安全风险" class="headerlink" title="七、容器的局限性和安全风险"></a>七、容器的局限性和安全风险</h2><p>理解了容器的原理，就能理解它的局限性：</p>
+<ol>
+<li><strong>共享内核</strong>：容器和宿主机共享同一个内核，内核漏洞会影响所有容器。容器逃逸（container escape）通常就是利用内核漏洞或 capabilities 配置不当实现的。</li>
+<li><strong>隔离不如虚拟机</strong>：namespace 隔离的是”视图”，不是真正的硬件隔离。某些资源（比如时间、内核参数、&#x2F;sys 下的某些文件）没有完全隔离。</li>
+<li><strong>cgroup 限制不完美</strong>：cgroup v1 有很多限制（比如不能限制 buffer cache、不能限制内核内存），cgroup v2 改进了很多，但仍然有一些资源不能精确限制（比如磁盘 inode 数、文件描述符数需要额外配置）。</li>
+<li><strong>镜像安全</strong>：容器镜像可能包含漏洞、恶意软件、敏感信息（密钥、证书）。需要用镜像扫描工具（Trivy、Clair）扫描，用最小基础镜像（distroless、scratch）减少攻击面。</li>
+<li><strong>运行时安全</strong>：容器运行时可能被攻击，需要用运行时安全工具（Falco、Sysdig）监控容器行为，检测异常系统调用和文件访问。</li>
+</ol>
+<p>生产环境里的容器安全是一个体系：镜像扫描 + 最小 capabilities + seccomp + AppArmor&#x2F;SELinux + 非 root 用户运行 + 只读根文件系统 + 运行时监控 + 网络策略（NetworkPolicy），多层防御。</p>
+<h2 id="八、总结"><a href="#八、总结" class="headerlink" title="八、总结"></a>八、总结</h2><p>容器的三大基石：</p>
+<ol>
+<li><strong>namespace</strong>：视图隔离，让进程看到独立的主机名、网络、进程、文件系统挂载、用户等。8 种 namespace 各司其职。</li>
+<li><strong>cgroup</strong>：资源限制，限制进程组的 CPU、内存、IO、进程数等资源使用。v2 统一层级是未来方向。</li>
+<li><strong>rootfs + overlayfs</strong>：文件系统隔离，用联合文件系统把镜像的只读层和容器的可写层联合挂载，pivot_root 切换根目录。</li>
+</ol>
+<p>加上安全加固（capabilities、seccomp、AppArmor），就构成了完整的容器隔离体系。</p>
+<p>理解了这些底层原理，再看 Docker、Kubernetes、containerd、runc 这些工具，就会发现它们本质上都是在管理 namespace、cgroup、rootfs 和镜像分层，只是封装程度和功能范围不同而已。遇到容器问题（网络不通、内存 OOM、文件丢失、权限不足），也能从底层原理出发快速定位。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/Linux/" class="category-chain-item">Linux</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/Linux/%E5%AE%B9%E5%99%A8/" class="category-chain-item">容器</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/%E5%AE%B9%E5%99%A8/" class="print-no-link">#容器</a>
+      
+        <a href="/tags/namespace/" class="print-no-link">#namespace</a>
+      
+        <a href="/tags/cgroup/" class="print-no-link">#cgroup</a>
+      
+        <a href="/tags/overlayfs/" class="print-no-link">#overlayfs</a>
+      
+        <a href="/tags/runc/" class="print-no-link">#runc</a>
+      
+        <a href="/tags/Docker/" class="print-no-link">#Docker</a>
+      
+        <a href="/tags/%E9%9A%94%E7%A6%BB/" class="print-no-link">#隔离</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器</div>
+      <div>https://zhb816.github.io/2026/07/25/linux-container-internals-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年7月25日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/07/30/linux-kernel-network-stack-deep-dive/" title="Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">Linux 内核网络栈深度解析——从网卡中断到 socket 接收队列</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/07/20/linux-memory-management-deep-dive/" title="Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM">
+                        <span class="hidden-mobile">Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

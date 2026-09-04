@@ -1,0 +1,1105 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="MPLS（多协议标签交换）曾经是运营商骨干网的绝对主流，现在虽然在数据中心被 VXLAN 替代，但在运营商 WAN 和企业专线场景里仍然无处不在。企业用的 MPLS 专线、SD-WAN 的 Underlay、VPN 服务，底层很多都是 MPLS。这篇文章从 MPLS 基础讲到 L3VPN 和 L2VPN 的实现原理。 一、MPLS 基础1.1 什么是 MPLSMPLS 的核心思想：在报文进入网络时">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网">
+<meta property="og:url" content="https://zhb816.github.io/2026/08/05/mpls-vpn-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="MPLS（多协议标签交换）曾经是运营商骨干网的绝对主流，现在虽然在数据中心被 VXLAN 替代，但在运营商 WAN 和企业专线场景里仍然无处不在。企业用的 MPLS 专线、SD-WAN 的 Underlay、VPN 服务，底层很多都是 MPLS。这篇文章从 MPLS 基础讲到 L3VPN 和 L2VPN 的实现原理。 一、MPLS 基础1.1 什么是 MPLSMPLS 的核心思想：在报文进入网络时">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-08-05T03:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T07:59:41.391Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="BGP">
+<meta property="article:tag" content="L2VPN">
+<meta property="article:tag" content="L3VPN">
+<meta property="article:tag" content="MPLS">
+<meta property="article:tag" content="VPLS">
+<meta property="article:tag" content="运营商网络">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-08-05 11:00" pubdate>
+          2026年8月5日 上午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          6.4k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          54 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>MPLS（多协议标签交换）曾经是运营商骨干网的绝对主流，现在虽然在数据中心被 VXLAN 替代，但在运营商 WAN 和企业专线场景里仍然无处不在。企业用的 MPLS 专线、SD-WAN 的 Underlay、VPN 服务，底层很多都是 MPLS。这篇文章从 MPLS 基础讲到 L3VPN 和 L2VPN 的实现原理。</p>
+<h2 id="一、MPLS-基础"><a href="#一、MPLS-基础" class="headerlink" title="一、MPLS 基础"></a>一、MPLS 基础</h2><h3 id="1-1-什么是-MPLS"><a href="#1-1-什么是-MPLS" class="headerlink" title="1.1 什么是 MPLS"></a>1.1 什么是 MPLS</h3><p>MPLS 的核心思想：<strong>在报文进入网络时给它打一个标签（Label），后续转发只看标签，不看 IP 头</strong>。</p>
+<p>传统 IP 转发是”逐跳查路由表”，每台路由器都要查最长前缀匹配，性能受路由表规模影响。MPLS 把”路由查找”变成”标签交换”，标签是固定长度的整数，查标签表比查路由表快得多。</p>
+<p>MPLS 介于二层和三层之间，所以叫”2.5 层协议”。</p>
+<h3 id="1-2-MPLS-报文格式"><a href="#1-2-MPLS-报文格式" class="headerlink" title="1.2 MPLS 报文格式"></a>1.2 MPLS 报文格式</h3><p>标签栈放在二层头和三层头之间：</p>
+<figure class="highlight gherkin"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs gherkin">|<span class="hljs-string"> 以太网头(14B) </span>|<span class="hljs-string"> MPLS标签栈 </span>|<span class="hljs-string"> IP头 </span>|<span class="hljs-string"> TCP头 </span>|<span class="hljs-string"> 数据 </span>|<br></code></pre></td></tr></table></figure>
+
+<p>单个标签 4 字节（32 位）：</p>
+<figure class="highlight asciidoc"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><code class="hljs asciidoc"><span class="hljs-code"> 0                   1                   2                   3</span><br><span class="hljs-section"> 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br><span class="hljs-section">|                Label                  | TC  |S|       TTL      |</span><br><span class="hljs-section">+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+</span><br></code></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>Label</strong>：20 位，标签值（0-15 保留，16 以上可用）</li>
+<li><strong>TC</strong>：3 位，流量类别（原来叫 EXP，用于 QoS）</li>
+<li><strong>S</strong>：1 位，栈底标记（1 表示这是标签栈的最后一个标签）</li>
+<li><strong>TTL</strong>：8 位，生存时间（和 IP TTL 一样，每跳减 1，防环路）</li>
+</ul>
+<p>标签可以嵌套（标签栈），最外层标签先处理，这是 MPLS VPN 的基础。</p>
+<h3 id="1-3-MPLS-网络角色"><a href="#1-3-MPLS-网络角色" class="headerlink" title="1.3 MPLS 网络角色"></a>1.3 MPLS 网络角色</h3><figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><code class="hljs dart">            MPLS 域<br>     ┌──────────────────────┐<br>     │                      │<br>CE ──┼── PE ── P ── P ── PE ──┼── CE<br>     │                      │<br>     └──────────────────────┘<br><br>CE（<span class="hljs-title class_">Customer</span> <span class="hljs-title class_">Edge</span>）：客户边缘设备，客户的路由器，不感知 MPLS<br>PE（<span class="hljs-title class_">Provider</span> <span class="hljs-title class_">Edge</span>）：运营商边缘设备，MPLS 域的入口/出口，负责打标签/剥标签，维护 VPN 路由<br>P（<span class="hljs-title class_">Provider</span>）：运营商核心设备，只做标签交换，不维护 VPN 路由（这是关键！）<br></code></pre></td></tr></table></figure>
+
+<p>核心设计思想：<strong>P 设备只负责标签转发，不需要知道任何 VPN 信息</strong>。所有 VPN 相关的处理都在 PE 上完成，P 设备只看最外层标签做转发。这样 P 设备可以很简单、很快，VPN 的复杂度集中在 PE 上。</p>
+<h3 id="1-4-标签分发协议（LDP）"><a href="#1-4-标签分发协议（LDP）" class="headerlink" title="1.4 标签分发协议（LDP）"></a>1.4 标签分发协议（LDP）</h3><p>LDP（Label Distribution Protocol）用来在 MPLS 域内分发标签，建立 LSP（标签交换路径）。</p>
+<p>LDP 的工作方式：</p>
+<ol>
+<li>每台设备为自己的环回口地址（Loopback）分配一个标签</li>
+<li>通过 LDP 把标签告诉邻居</li>
+<li>邻居收到后，在自己的标签转发表（LFIB）里记录：”到 X 的标签是 Y，下一跳是 Z”</li>
+<li>逐跳建立 LSP，从入口 PE 到出口 PE 形成一条标签交换路径</li>
+</ol>
+<p>LDP 只负责为 IGP 路由（OSPF&#x2F;IS-IS）分配标签，不负责 VPN 路由。VPN 路由的标签用 MP-BGP 分发。</p>
+<h2 id="二、MPLS-L3VPN——最经典的-VPN-服务"><a href="#二、MPLS-L3VPN——最经典的-VPN-服务" class="headerlink" title="二、MPLS L3VPN——最经典的 VPN 服务"></a>二、MPLS L3VPN——最经典的 VPN 服务</h2><p>MPLS L3VPN（RFC 4364，也叫 BGP&#x2F;MPLS IP VPN）是运营商最常用的 VPN 服务，企业的 MPLS 专线基本都是这个。</p>
+<h3 id="2-1-核心概念"><a href="#2-1-核心概念" class="headerlink" title="2.1 核心概念"></a>2.1 核心概念</h3><p><strong>VRF（VPN Routing and Forwarding Instance）</strong>：<br>PE 上为每个 VPN 创建一个独立的路由表（VRF），不同 VPN 的路由完全隔离。一个物理 PE 可以有多个 VRF，每个 VRF 绑定一个或多个连接 CE 的接口。</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs dart">PE 路由器<br>├── VRF-A（VPN-A 的路由表）<br>│   ├── 接口 <span class="hljs-title class_">Gi0</span>/<span class="hljs-number">0</span>/<span class="hljs-number">1</span>（连 CE-<span class="hljs-title class_">A1</span>）<br>│   └── 接口 <span class="hljs-title class_">Gi0</span>/<span class="hljs-number">0</span>/<span class="hljs-number">2</span>（连 CE-<span class="hljs-title class_">A2</span>）<br>├── VRF-B（VPN-B 的路由表）<br>│   └── 接口 <span class="hljs-title class_">Gi0</span>/<span class="hljs-number">0</span>/<span class="hljs-number">3</span>（连 CE-<span class="hljs-title class_">B1</span>）<br>└── <span class="hljs-title class_">Global</span> RIB（公网路由表，用于 PE 之间通信）<br></code></pre></td></tr></table></figure>
+
+<p><strong>RD（Route Distinguisher，路由区分符）</strong>：<br>不同 VPN 可能用相同的 IP 地址段（比如都用 10.0.0.0&#x2F;8），为了区分，PE 把 VPN 路由变成 <strong>VPNv4 地址</strong>：<code>RD + IPv4 地址</code>。</p>
+<p>RD 是 8 字节，格式通常是 <code>ASN:NN</code> 或 <code>IP:NN</code>，比如 <code>65001:100</code>。</p>
+<p>VPNv4 地址 &#x3D; RD(8B) + IPv4(4B) &#x3D; 12 字节，全局唯一。</p>
+<p><strong>RT（Route Target，路由目标）</strong>：<br>RT 控制 VPN 路由的导入导出，决定哪些 PE 接收哪些 VPN 路由。</p>
+<ul>
+<li><strong>Export RT</strong>：PE 导出 VPN 路由时，给路由打上 Export RT 标记</li>
+<li><strong>Import RT</strong>：PE 的 VRF 配置 Import RT，只导入匹配的 VPN 路由</li>
+</ul>
+<p>RT 也是 8 字节，格式和 RD 类似。一个 VRF 可以配置多个 Export RT 和 Import RT，实现 Hub-Spoke、全互联等拓扑。</p>
+<h3 id="2-2-L3VPN-控制面——路由怎么传播"><a href="#2-2-L3VPN-控制面——路由怎么传播" class="headerlink" title="2.2 L3VPN 控制面——路由怎么传播"></a>2.2 L3VPN 控制面——路由怎么传播</h3><p>以 VPN-A 为例，CE-A1 把路由发给 PE1：</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dns">CE-A1 ──<span class="hljs-punctuation">(</span>OSPF/EBGP/静态<span class="hljs-punctuation">)</span>──&gt; PE1<span class="hljs-punctuation">(</span>VRF-<span class="hljs-keyword">A</span><span class="hljs-punctuation">)</span> ──<span class="hljs-punctuation">(</span>MP-BGP<span class="hljs-punctuation">)</span>──&gt; PE2<span class="hljs-punctuation">(</span>VRF-<span class="hljs-keyword">A</span><span class="hljs-punctuation">)</span> ──<span class="hljs-punctuation">(</span>OSPF/EBGP/静态<span class="hljs-punctuation">)</span>──&gt; CE-A2<br></code></pre></td></tr></table></figure>
+
+<p>详细过程：</p>
+<ol>
+<li><p><strong>CE 到 PE</strong>：CE-A1 和 PE1 之间跑路由协议（EBGP、OSPF、EIGRP、静态都可以），CE-A1 把自己的内网路由（比如 10.1.0.0&#x2F;24）发给 PE1</p>
+</li>
+<li><p><strong>PE 处理</strong>：PE1 把路由收到 VRF-A 的路由表里，然后：</p>
+<ul>
+<li>给路由加上 RD，变成 VPNv4 路由：<code>RD=65001:100 + 10.1.0.0/24</code></li>
+<li>给路由打上 Export RT（比如 <code>65001:100</code>）</li>
+<li>给路由分配一个 VPN 标签（MP-BGP 标签）</li>
+<li>通过 MP-BGP（多协议 BGP，地址族 VPNv4）发给 PE2</li>
+</ul>
+</li>
+<li><p><strong>PE 之间</strong>：MP-BGP 更新消息在 PE 之间传递，经过 P 设备时，P 设备不解析 VPNv4 路由（P 不需要知道 VPN 信息），只负责转发 BGP 报文</p>
+</li>
+<li><p><strong>PE2 处理</strong>：PE2 收到 VPNv4 路由后：</p>
+<ul>
+<li>检查路由的 RT 是否匹配 VRF-A 的 Import RT</li>
+<li>匹配则剥离 RD，把 IPv4 路由（10.1.0.0&#x2F;24）导入 VRF-A 的路由表</li>
+<li>记录 VPN 标签和下一跳（PE1 的环回口地址）</li>
+</ul>
+</li>
+<li><p><strong>PE 到 CE</strong>：PE2 通过和 CE-A2 之间的路由协议，把路由发给 CE-A2</p>
+</li>
+</ol>
+<h3 id="2-3-L3VPN-数据面——报文怎么转发"><a href="#2-3-L3VPN-数据面——报文怎么转发" class="headerlink" title="2.3 L3VPN 数据面——报文怎么转发"></a>2.3 L3VPN 数据面——报文怎么转发</h3><p>CE-A1 发一个报文到 CE-A2（源 10.1.0.1，目的 10.2.0.1）：</p>
+<ol>
+<li><p><strong>CE-A1 → PE1</strong>：普通 IP 报文，CE-A1 查路由表，下一跳是 PE1 的接口地址</p>
+</li>
+<li><p><strong>PE1 处理（入站 PE）</strong>：</p>
+<ul>
+<li>报文从绑定 VRF-A 的接口进入，查 VRF-A 的路由表</li>
+<li>找到 10.2.0.0&#x2F;24 的路由，下一跳是 PE2 的环回口，关联一个 VPN 标签（L2）</li>
+<li>查公网路由表，到 PE2 环回口的 LSP 出标签是 L1（通过 LDP 学到）</li>
+<li>压入两层标签：外层 L1（到 PE2 的 LSP 标签），内层 L2（VPN 标签）</li>
+<li>报文变成：<code>IP头 | 标签L1 | 标签L2(S=0) | 原始IP报文</code></li>
+</ul>
+</li>
+<li><p><strong>P 设备转发</strong>：</p>
+<ul>
+<li>P 收到报文，只看最外层标签 L1</li>
+<li>查 LFIB（标签转发信息库），L1 的出标签是 L1’，下一跳是下一个 P</li>
+<li>交换标签：把 L1 换成 L1’，TTL 减 1</li>
+<li>内层标签 L2 完全不碰，P 不知道也不关心里面是什么</li>
+<li>逐跳转发，直到到达 PE2</li>
+</ul>
+</li>
+<li><p><strong>PE2 处理（出站 PE）</strong>：</p>
+<ul>
+<li>PE2 收到报文，外层标签 L1’ 的 TTL 到 0 或标签是 PHP（倒数第二跳弹出）标签，PE2 弹出外层标签</li>
+<li>看内层标签 L2，查 VPN 标签转发表，L2 对应 VRF-A 和出接口</li>
+<li>弹出内层标签，恢复原始 IP 报文</li>
+<li>查 VRF-A 的路由表，从绑定 VRF-A 的接口发给 CE-A2</li>
+</ul>
+</li>
+<li><p><strong>PE2 → CE-A2</strong>：普通 IP 报文</p>
+</li>
+</ol>
+<p>关键点：<strong>P 设备只做标签交换，完全不感知 VPN</strong>。VPN 的所有复杂性都在 PE 上，P 设备可以很简单、很快。这就是 MPLS VPN 能大规模扩展的原因——P 设备数量可以很多，但不需要维护 VPN 状态。</p>
+<h3 id="2-4-PHP（Penultimate-Hop-Popping，倒数第二跳弹出）"><a href="#2-4-PHP（Penultimate-Hop-Popping，倒数第二跳弹出）" class="headerlink" title="2.4 PHP（Penultimate Hop Popping，倒数第二跳弹出）"></a>2.4 PHP（Penultimate Hop Popping，倒数第二跳弹出）</h3><p>PHP 是 MPLS 的一个优化机制：在到达出站 PE 的前一跳（P 设备），就把外层标签弹掉，这样出站 PE 收到的是只有内层标签的报文，不需要再查一次外层标签表，减少 PE 的处理负担。</p>
+<p>实现方式：出站 PE 为自己的环回口分配一个特殊标签 3（Implicit Null），通过 LDP 告诉邻居。P 设备看到出标签是 3，就不压入标签，直接弹出。</p>
+<h3 id="2-5-L3VPN-的拓扑类型"><a href="#2-5-L3VPN-的拓扑类型" class="headerlink" title="2.5 L3VPN 的拓扑类型"></a>2.5 L3VPN 的拓扑类型</h3><p>通过 RT 的不同组合，可以实现不同的 VPN 拓扑：</p>
+<p><strong>全互联（Full Mesh）</strong>：</p>
+<ul>
+<li>每个 PE 的 VRF 都 Export 和 Import 相同的 RT</li>
+<li>所有站点之间互通</li>
+</ul>
+<p><strong>Hub-Spoke（中心-分支）</strong>：</p>
+<ul>
+<li>Hub 站点的 VRF：Export RT&#x3D;Hub，Import RT&#x3D;Spoke</li>
+<li>Spoke 站点的 VRF：Export RT&#x3D;Spoke，Import RT&#x3D;Hub</li>
+<li>Spoke 之间不能直接通信，必须经过 Hub（Hub 可以做安全检查、流量审计）</li>
+</ul>
+<p><strong>Extranet（外联网）</strong>：</p>
+<ul>
+<li>两个不同的 VPN 之间部分互通</li>
+<li>通过在一个 VRF 里 Import 另一个 VPN 的 RT 实现</li>
+<li>可以精确控制哪些网段互通</li>
+</ul>
+<h2 id="三、MPLS-L2VPN——二层透传服务"><a href="#三、MPLS-L2VPN——二层透传服务" class="headerlink" title="三、MPLS L2VPN——二层透传服务"></a>三、MPLS L2VPN——二层透传服务</h2><p>L3VPN 是三层路由服务，PE 参与客户的路由。L2VPN 是二层透传服务，PE 不参与客户路由，只把客户的二层帧透传到对端，客户感觉就像用一根网线把两个站点连起来。</p>
+<h3 id="3-1-VPWS（Virtual-Private-Wire-Service，虚拟专线服务）"><a href="#3-1-VPWS（Virtual-Private-Wire-Service，虚拟专线服务）" class="headerlink" title="3.1 VPWS（Virtual Private Wire Service，虚拟专线服务）"></a>3.1 VPWS（Virtual Private Wire Service，虚拟专线服务）</h3><p>VPWS 是点到点的二层透传，相当于一条虚拟的二层专线。</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dns">CE1 ──<span class="hljs-punctuation">(</span>二层帧<span class="hljs-punctuation">)</span>──&gt; PE1 ──<span class="hljs-punctuation">(</span>MPLS隧道<span class="hljs-punctuation">)</span>──&gt; PE2 ──<span class="hljs-punctuation">(</span>二层帧<span class="hljs-punctuation">)</span>──&gt; CE2<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li>PE1 把从 CE1 收到的二层帧（以太网帧）封装在 MPLS 里，通过 LSP 发给 PE2</li>
+<li>PE2 剥掉 MPLS 头，把原始二层帧发给 CE2</li>
+<li>对 CE 来说，就像直接用网线连在一起，同一个 VLAN、同一个网段</li>
+<li>点到点，一个 VPWS 只能连两个站点</li>
+</ul>
+<p>VPWS 用的信令协议：</p>
+<ul>
+<li><strong>LDP</strong>（Martini 模式，RFC 4906）：用 LDP 分发 VC 标签（二层电路标签）</li>
+<li><strong>BGP</strong>（Kompella 模式）：用 BGP 分发 VC 标签，支持自动发现</li>
+</ul>
+<h3 id="3-2-VPLS（Virtual-Private-LAN-Service，虚拟专用局域网服务）"><a href="#3-2-VPLS（Virtual-Private-LAN-Service，虚拟专用局域网服务）" class="headerlink" title="3.2 VPLS（Virtual Private LAN Service，虚拟专用局域网服务）"></a>3.2 VPLS（Virtual Private LAN Service，虚拟专用局域网服务）</h3><p>VPLS 是点到多点的二层透传，相当于把多个站点连在一个虚拟交换机上，所有站点在同一个广播域里。</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><code class="hljs dart">        VPLS 实例（虚拟交换机）<br>   ┌──────────────────────────────┐<br>   │                              │<br><span class="hljs-title class_">CE1</span>─┼──<span class="hljs-title class_">PE1</span> ════ MPLS ════ <span class="hljs-title class_">PE2</span>──┼──<span class="hljs-title class_">CE2</span><br>   │      ║            ║        │<br>   │      ╚═══ MPLS ═══╝        │<br>   │              ║              │<br><span class="hljs-title class_">CE3</span>─┼────────────<span class="hljs-title class_">PE3</span>─────────────┼──<br>   └──────────────────────────────┘<br></code></pre></td></tr></table></figure>
+
+<p>VPLS 的核心：<strong>PE 之间全互联的伪线（PW），每个 PE 模拟一个虚拟交换机的端口</strong>。</p>
+<p>工作原理：</p>
+<ol>
+<li>每个 PE 为 VPLS 实例维护一个 MAC 地址表（和普通交换机一样）</li>
+<li>PE 之间用全互联的 PW（伪线，基于 MPLS 的点到点隧道）连接</li>
+<li>单播帧：PE 查 MAC 表，从对应的 PW 或本地接口转发</li>
+<li>广播&#x2F;组播&#x2F;未知单播（BUM 流量）：从所有其他 PW 和本地接口泛洪（水平分割：从 PW 收到的帧不再从其他 PW 发出，避免环路）</li>
+<li>MAC 学习：和普通交换机一样，从源 MAC 学习端口</li>
+</ol>
+<p>VPLS 的问题：</p>
+<ul>
+<li><strong>全互联 PW 的 N^2 问题</strong>：N 个 PE 需要 N*(N-1)&#x2F;2 条 PW，规模大了不可扩展</li>
+<li><strong>BUM 流量泛洪</strong>：广播帧要复制到所有 PE，带宽浪费</li>
+<li><strong>MAC 表规模</strong>：所有站点的 MAC 都要学到每个 PE，MAC 表可能很大</li>
+</ul>
+<p>为了解决 VPLS 的扩展问题，后来有了：</p>
+<ul>
+<li><strong>H-VPLS（分层 VPLS）</strong>：引入汇聚层，减少全互联</li>
+<li><strong>EVPN（Ethernet VPN）</strong>：用 BGP 做控制面，替代数据面的 MAC 学习和泛洪，是现在的主流</li>
+</ul>
+<h3 id="3-3-EVPN（Ethernet-VPN）"><a href="#3-3-EVPN（Ethernet-VPN）" class="headerlink" title="3.3 EVPN（Ethernet VPN）"></a>3.3 EVPN（Ethernet VPN）</h3><p>EVPN 是下一代二层 VPN 技术，用 BGP 作为控制面，解决了 VPLS 的扩展问题。</p>
+<p>EVPN 的核心思想（和 VXLAN EVPN 一样）：</p>
+<ul>
+<li><strong>控制面学习 MAC</strong>：PE 通过 BGP 通告 MAC 地址（Type 2 路由），不需要数据面泛洪学习</li>
+<li><strong>ARP 抑制</strong>：PE 本地代理 ARP，减少广播</li>
+<li><strong>BUM 流量用 Inclusive Multicast</strong>（Type 3 路由）：用组播或 Ingress Replication 转发 BUM，不需要全互联泛洪</li>
+<li><strong>支持多归接入（Multi-homing）</strong>：一个 CE 可以双归到两个 PE，用 ES（Ethernet Segment）实现负载分担和冗余</li>
+</ul>
+<p>EVPN 可以承载多种数据面：</p>
+<ul>
+<li><strong>EVPN over MPLS</strong>：传统运营商网络</li>
+<li><strong>EVPN over VXLAN</strong>：数据中心网络（现在最主流）</li>
+<li><strong>EVPN over SRv6</strong>：下一代运营商网络</li>
+</ul>
+<h2 id="四、MPLS-的演进——从-MPLS-到-SR-SRv6"><a href="#四、MPLS-的演进——从-MPLS-到-SR-SRv6" class="headerlink" title="四、MPLS 的演进——从 MPLS 到 SR&#x2F;SRv6"></a>四、MPLS 的演进——从 MPLS 到 SR&#x2F;SRv6</h2><p>传统 MPLS 用 LDP 分发标签、RSVP-TE 建立流量工程隧道，协议复杂、运维困难。现在运营商在向 <strong>Segment Routing（段路由）</strong> 演进。</p>
+<h3 id="4-1-SR-MPLS"><a href="#4-1-SR-MPLS" class="headerlink" title="4.1 SR-MPLS"></a>4.1 SR-MPLS</h3><p>Segment Routing 的核心思想：<strong>源节点在报文头里压入一个标签栈（段列表），指定报文要经过的路径，中间节点只做标签交换，不需要维护路径状态</strong>。</p>
+<ul>
+<li>不需要 LDP 和 RSVP-TE，标签由 IGP（OSPF&#x2F;IS-IS）扩展分发</li>
+<li>源路由，路径在头节点指定，中间节点无状态</li>
+<li>可以灵活实现流量工程、快速重路由（FRR）</li>
+<li>和 MPLS 数据面兼容，只是控制面变了</li>
+</ul>
+<h3 id="4-2-SRv6"><a href="#4-2-SRv6" class="headerlink" title="4.2 SRv6"></a>4.2 SRv6</h3><p>SRv6 把 Segment Routing 的思想用在 IPv6 上，用 IPv6 扩展头（SRH，Segment Routing Header）携带段列表，段列表是 IPv6 地址列表。</p>
+<ul>
+<li>不需要 MPLS 标签，纯 IPv6 转发</li>
+<li>用 IPv6 地址作为段标识，地址空间巨大</li>
+<li>可以和传统 IPv6 网络互通</li>
+<li>是运营商 5G 承载网和下一代骨干网的主流方向</li>
+</ul>
+<h2 id="五、企业视角：MPLS-专线-vs-SD-WAN"><a href="#五、企业视角：MPLS-专线-vs-SD-WAN" class="headerlink" title="五、企业视角：MPLS 专线 vs SD-WAN"></a>五、企业视角：MPLS 专线 vs SD-WAN</h2><p>企业用 WAN 连接多个站点，传统方案是 MPLS 专线，现在很多企业在考虑 SD-WAN。两者不是替代关系，而是互补：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>MPLS 专线</th>
+<th>SD-WAN</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>带宽成本</td>
+<td>高（运营商垄断，每Mbps贵）</td>
+<td>低（用互联网宽带，便宜）</td>
+</tr>
+<tr>
+<td>SLA 保障</td>
+<td>高（运营商承诺延迟、丢包、可用率）</td>
+<td>中（依赖互联网质量，靠智能选路和丢包恢复弥补）</td>
+</tr>
+<tr>
+<td>开通速度</td>
+<td>慢（几周到几个月，需要运营商施工）</td>
+<td>快（几天，CPE 插电就能用）</td>
+</tr>
+<tr>
+<td>灵活性</td>
+<td>低（加带宽要找运营商，改拓扑要重新规划）</td>
+<td>高（软件定义，策略随时改，带宽弹性扩展）</td>
+</tr>
+<tr>
+<td>安全性</td>
+<td>中（运营商网络隔离，但不是加密）</td>
+<td>高（IPSec 加密，零信任集成）</td>
+</tr>
+<tr>
+<td>云应用访问</td>
+<td>差（流量回总部再出去，延迟高）</td>
+<td>好（本地突破，直接访问云应用）</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>关键业务、对 SLA 要求极高</td>
+<td>一般业务、云应用、多分支</td>
+</tr>
+</tbody></table>
+<p>现在的主流趋势是 <strong>SD-WAN + MPLS 混合组网</strong>：</p>
+<ul>
+<li>关键业务（交易、语音）走 MPLS 专线，保障 SLA</li>
+<li>一般业务（网页、邮件、云应用）走互联网，降低成本</li>
+<li>SD-WAN 做智能选路和统一管理，MPLS 作为 Underlay 的一条链路</li>
+</ul>
+<h2 id="六、总结"><a href="#六、总结" class="headerlink" title="六、总结"></a>六、总结</h2><p>MPLS 技术体系的核心：</p>
+<ol>
+<li><strong>标签交换</strong>：用标签代替 IP 前缀查找，转发更快</li>
+<li><strong>PE&#x2F;P 分离</strong>：VPN 复杂性集中在 PE，P 只做简单标签交换，可大规模扩展</li>
+<li><strong>L3VPN</strong>：用 VRF + RD + RT + MP-BGP 实现三层 VPN 路由隔离</li>
+<li><strong>L2VPN</strong>：用伪线实现二层透传，VPWS 点到点，VPLS&#x2F;EVPN 点到多点</li>
+<li><strong>数据面封装</strong>：两层标签（外层 LSP 标签 + 内层 VPN&#x2F;VC 标签）</li>
+</ol>
+<p>理解了 MPLS VPN，再看 SD-WAN、VXLAN、SRv6 这些新技术，会发现很多思想是相通的——都是 Underlay + Overlay 的分离，都是控制面和数据面的分离，都是用隧道封装实现逻辑网络和物理网络的解耦。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BC%81%E4%B8%9A%E7%BD%91%E7%BB%9C/" class="category-chain-item">企业网络</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BC%81%E4%B8%9A%E7%BD%91%E7%BB%9C/VPN/" class="category-chain-item">VPN</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/MPLS/" class="print-no-link">#MPLS</a>
+      
+        <a href="/tags/L3VPN/" class="print-no-link">#L3VPN</a>
+      
+        <a href="/tags/L2VPN/" class="print-no-link">#L2VPN</a>
+      
+        <a href="/tags/VPLS/" class="print-no-link">#VPLS</a>
+      
+        <a href="/tags/BGP/" class="print-no-link">#BGP</a>
+      
+        <a href="/tags/%E8%BF%90%E8%90%A5%E5%95%86%E7%BD%91%E7%BB%9C/" class="print-no-link">#运营商网络</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>MPLS VPN 深度解析——L3VPN、L2VPN 与运营商骨干网</div>
+      <div>https://zhb816.github.io/2026/08/05/mpls-vpn-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年8月5日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/08/08/ipsec-vpn-deep-dive/" title="IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">IPSec VPN 深度解析——IKEv2、ESP、NAT 穿越与高可用</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/08/02/enterprise-network-ha-deep-dive/" title="企业网络高可用技术全解——VRRP、链路聚合、堆叠与 M-LAG">
+                        <span class="hidden-mobile">企业网络高可用技术全解——VRRP、链路聚合、堆叠与 M-LAG</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

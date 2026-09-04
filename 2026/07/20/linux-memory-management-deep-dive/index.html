@@ -1,0 +1,1256 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="Linux 内存管理是内核里最复杂的子系统之一，从物理页的分配回收，到虚拟地址的映射，再到页缓存和 OOM 杀手，每一层都有大量的算法和优化。理解内存管理，是排查内存泄漏、OOM、性能问题的基础。这篇文章从物理内存到虚拟内存，从分配到回收，逐层拆解。 一、物理内存组织1.1 NUMA（Non-Uniform Memory Access）现代多 CPU 服务器通常是 NUMA 架构：每个 CPU 有">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM">
+<meta property="og:url" content="https://zhb816.github.io/2026/07/20/linux-memory-management-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="Linux 内存管理是内核里最复杂的子系统之一，从物理页的分配回收，到虚拟地址的映射，再到页缓存和 OOM 杀手，每一层都有大量的算法和优化。理解内存管理，是排查内存泄漏、OOM、性能问题的基础。这篇文章从物理内存到虚拟内存，从分配到回收，逐层拆解。 一、物理内存组织1.1 NUMA（Non-Uniform Memory Access）现代多 CPU 服务器通常是 NUMA 架构：每个 CPU 有">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-07-20T03:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T08:12:13.276Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="NUMA">
+<meta property="article:tag" content="OOM">
+<meta property="article:tag" content="SLUB">
+<meta property="article:tag" content="kswapd">
+<meta property="article:tag" content="伙伴系统">
+<meta property="article:tag" content="内存管理">
+<meta property="article:tag" content="页缓存">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-07-20 11:00" pubdate>
+          2026年7月20日 上午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          13k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          105 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>Linux 内存管理是内核里最复杂的子系统之一，从物理页的分配回收，到虚拟地址的映射，再到页缓存和 OOM 杀手，每一层都有大量的算法和优化。理解内存管理，是排查内存泄漏、OOM、性能问题的基础。这篇文章从物理内存到虚拟内存，从分配到回收，逐层拆解。</p>
+<h2 id="一、物理内存组织"><a href="#一、物理内存组织" class="headerlink" title="一、物理内存组织"></a>一、物理内存组织</h2><h3 id="1-1-NUMA（Non-Uniform-Memory-Access）"><a href="#1-1-NUMA（Non-Uniform-Memory-Access）" class="headerlink" title="1.1 NUMA（Non-Uniform Memory Access）"></a>1.1 NUMA（Non-Uniform Memory Access）</h3><p>现代多 CPU 服务器通常是 NUMA 架构：每个 CPU 有自己的本地内存，访问本地内存快，访问其他 CPU 的远程内存慢（要通过跨 CPU 互联总线）。</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><code class="hljs dns">┌─────────────┐         ┌─────────────┐<br>│   CPU <span class="hljs-number">0</span>     │         │   CPU <span class="hljs-number">1</span>     │<br>│  <span class="hljs-punctuation">(</span>NUMA node0<span class="hljs-punctuation">)</span>│         │  <span class="hljs-punctuation">(</span>NUMA node1<span class="hljs-punctuation">)</span>│<br>│  本地内存 <span class="hljs-number">32</span>G │◄──互联──►│  本地内存 <span class="hljs-number">32</span>G │<br>└─────────────┘         └─────────────┘<br></code></pre></td></tr></table></figure>
+
+<p>Linux 把每个 NUMA 节点的内存独立管理，分配内存时优先从当前 CPU 所在的 NUMA 节点分配（本地分配），本地内存不足时才从远程节点分配。</p>
+<p>查看 NUMA 拓扑：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><code class="hljs bash">numactl --hardware<br><span class="hljs-comment"># available: 2 nodes (0-1)</span><br><span class="hljs-comment"># node 0 cpus: 0 1 2 3 4 5 6 7</span><br><span class="hljs-comment"># node 0 size: 32678 MB</span><br><span class="hljs-comment"># node 0 free: 15234 MB</span><br><span class="hljs-comment"># node 1 cpus: 8 9 10 11 12 13 14 15</span><br><span class="hljs-comment"># node 1 size: 32768 MB</span><br><span class="hljs-comment"># node 1 free: 20480 MB</span><br><span class="hljs-comment"># node distances:</span><br><span class="hljs-comment"># node   0   1</span><br><span class="hljs-comment">#   0:  10  21</span><br><span class="hljs-comment">#   1:  21  10</span><br></code></pre></td></tr></table></figure>
+
+<p><code>node distances</code> 里的 10 表示本地访问（归一化值），21 表示远程访问的相对延迟（是本地的 2.1 倍）。</p>
+<p>NUMA 相关的内存问题很常见：比如一个进程绑定在 CPU 0 上，但内存分配在了 node 1，导致每次内存访问都是远程访问，性能下降。可以用 <code>numastat</code> 查看进程的 NUMA 内存分布，用 <code>numactl --cpunodebind=0 --membind=0</code> 绑定 CPU 和内存节点。</p>
+<h3 id="1-2-Zones（内存区域）"><a href="#1-2-Zones（内存区域）" class="headerlink" title="1.2 Zones（内存区域）"></a>1.2 Zones（内存区域）</h3><p>每个 NUMA 节点的物理内存又被划分为多个 zone（区域），因为不同的物理地址范围有不同的用途和限制：</p>
+<table>
+<thead>
+<tr>
+<th>zone</th>
+<th>地址范围（x86-64）</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ZONE_DMA</td>
+<td>0-16MB</td>
+<td>老式 ISA 设备的 DMA（24 位地址总线）</td>
+</tr>
+<tr>
+<td>ZONE_DMA32</td>
+<td>0-4GB</td>
+<td>32 位设备的 DMA（只能访问 4GB 以下地址）</td>
+</tr>
+<tr>
+<td>ZONE_NORMAL</td>
+<td>4GB以上</td>
+<td>正常内存，内核可以直接映射（线性映射）</td>
+</tr>
+<tr>
+<td>ZONE_HIGHMEM</td>
+<td>（32位系统）</td>
+<td>高端内存，内核不能直接映射，需要临时映射（x86-64 没有这个 zone）</td>
+</tr>
+</tbody></table>
+<p>x86-64 系统上主要用 ZONE_DMA32 和 ZONE_NORMAL，ZONE_DMA 基本不用了（没有 ISA 设备）。</p>
+<p>每个 zone 有自己的空闲页链表（伙伴系统）、水位线（watermark）、统计信息。分配内存时根据请求的类型和限制选择合适的 zone，有一个 zone 列表的回退顺序（zonelist），比如优先从 ZONE_NORMAL 分配，不够再从 ZONE_DMA32 分配。</p>
+<p>查看 zone 信息：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-built_in">cat</span> /proc/zoneinfo<br><span class="hljs-comment"># 每个 node 的每个 zone 都有详细信息</span><br><span class="hljs-comment"># pages free、min、low、high 是水位线</span><br><span class="hljs-comment"># nr_free_pages 是空闲页数</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="1-3-页（Page）"><a href="#1-3-页（Page）" class="headerlink" title="1.3 页（Page）"></a>1.3 页（Page）</h3><p>Linux 内存管理的基本单位是<strong>页（page）</strong>，默认大小 4KB（x86-64）。也支持大页（HugePage）：2MB 和 1GB。</p>
+<p>每个物理页对应一个 <code>struct page</code> 结构体，存在 <code>mem_map</code> 数组里（每个 NUMA 节点有自己的 <code>node_mem_map</code>）。<code>struct page</code> 记录了页的状态：引用计数、标志位、映射关系、所在的链表等。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><code class="hljs c"><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">page</span> &#123;</span><br>    <span class="hljs-type">unsigned</span> <span class="hljs-type">long</span> flags;      <span class="hljs-comment">// 页标志位（脏、锁定、引用等）</span><br>    <span class="hljs-type">atomic_t</span> _refcount;       <span class="hljs-comment">// 引用计数</span><br>    <span class="hljs-type">atomic_t</span> _mapcount;       <span class="hljs-comment">// 映射计数（被多少个页表项映射）</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">address_space</span> *<span class="hljs-title">mapping</span>;</span>  <span class="hljs-comment">// 所属的地址空间（页缓存）</span><br>    <span class="hljs-type">pgoff_t</span> index;            <span class="hljs-comment">// 在地址空间中的偏移</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">list_head</span> <span class="hljs-title">lru</span>;</span>     <span class="hljs-comment">// LRU 链表节点</span><br>    <span class="hljs-class"><span class="hljs-keyword">union</span> &#123;</span><br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> &#123;</span> <span class="hljs-comment">/* 匿名页 */</span> &#125;;<br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> &#123;</span> <span class="hljs-comment">/* 页缓存页 */</span> &#125;;<br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> &#123;</span> <span class="hljs-comment">/* 伙伴系统 */</span> &#125;;<br>        <span class="hljs-comment">// ...</span><br>    &#125;;<br>    <span class="hljs-comment">// ...</span><br>&#125;;<br></code></pre></td></tr></table></figure>
+
+<p><code>struct page</code> 非常紧凑（x86-64 上 64 字节），因为系统里有大量的页（32GB 内存有 800 万个页，800万 * 64字节 &#x3D; 512MB，光 page 结构体就占 512MB）。</p>
+<h2 id="二、伙伴系统（Buddy-System）——物理页分配器"><a href="#二、伙伴系统（Buddy-System）——物理页分配器" class="headerlink" title="二、伙伴系统（Buddy System）——物理页分配器"></a>二、伙伴系统（Buddy System）——物理页分配器</h2><p>伙伴系统是 Linux 物理内存的底层分配器，负责分配和回收<strong>连续的物理页</strong>。</p>
+<h3 id="2-1-原理"><a href="#2-1-原理" class="headerlink" title="2.1 原理"></a>2.1 原理</h3><p>伙伴系统把物理内存按 2 的幂次分组成不同阶（order）的块：</p>
+<ul>
+<li>order 0：1 页（4KB）</li>
+<li>order 1：2 页（8KB）</li>
+<li>order 2：4 页（16KB）</li>
+<li>…</li>
+<li>order 10：1024 页（4MB，最大 order，x86-64 上）</li>
+</ul>
+<p>每个 order 有一个空闲块链表（free_area），共 11 个链表（order 0-10）。</p>
+<figure class="highlight prolog"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs prolog">order <span class="hljs-number">0</span> (<span class="hljs-number">4</span><span class="hljs-symbol">KB</span>):  [页<span class="hljs-symbol">A</span>] [页<span class="hljs-symbol">B</span>] [页<span class="hljs-symbol">C</span>] ...<br>order <span class="hljs-number">1</span> (<span class="hljs-number">8</span><span class="hljs-symbol">KB</span>):  [页<span class="hljs-symbol">D</span>+<span class="hljs-symbol">E</span>] [页<span class="hljs-symbol">F</span>+<span class="hljs-symbol">G</span>] ...<br>order <span class="hljs-number">2</span> (<span class="hljs-number">16</span><span class="hljs-symbol">KB</span>): [页<span class="hljs-symbol">H</span>+<span class="hljs-symbol">I</span>+<span class="hljs-symbol">J</span>+<span class="hljs-symbol">K</span>] ...<br>...<br></code></pre></td></tr></table></figure>
+
+<p><strong>分配</strong>：请求 order n 的块时：</p>
+<ol>
+<li>先查 order n 的空闲链表，如果有，直接分配</li>
+<li>如果没有，查 order n+1 的链表，找到一个块，分裂成两个 order n 的块（这两个块互为”伙伴”），一个分配出去，另一个加入 order n 的空闲链表</li>
+<li>如果 order n+1 也没有，继续向上找，直到找到为止</li>
+<li>分裂过程中产生的空闲伙伴块加入对应 order 的链表</li>
+</ol>
+<p><strong>回收</strong>：释放一个 order n 的块时：</p>
+<ol>
+<li>检查它的伙伴块（地址相邻的另一个 order n 块）是否也空闲</li>
+<li>如果伙伴也空闲，把两个块合并成一个 order n+1 的块</li>
+<li>继续检查新块的伙伴是否空闲，合并，直到伙伴不空闲或达到最大 order</li>
+<li>最终的块加入对应 order 的空闲链表</li>
+</ol>
+<p>伙伴系统的优点：</p>
+<ul>
+<li>快速分配和回收（O(1)，链表操作）</li>
+<li>有效减少外部碎片（通过合并伙伴块）</li>
+</ul>
+<p>伙伴系统的缺点：</p>
+<ul>
+<li>内部碎片：请求 5KB 内存，要分配 order 1（8KB），浪费 3KB</li>
+<li>不能分配小于 1 页的内存（小对象用 slab 分配器）</li>
+<li>长时间运行后仍然可能有碎片（虽然伙伴系统减少了碎片，但不能完全消除）</li>
+</ul>
+<h3 id="2-2-水位线（Watermark）"><a href="#2-2-水位线（Watermark）" class="headerlink" title="2.2 水位线（Watermark）"></a>2.2 水位线（Watermark）</h3><p>每个 zone 有三个水位线，用来控制内存分配和回收的行为：</p>
+<ul>
+<li><strong>min（最低水位）</strong>：空闲页低于这个值时，内存严重不足，分配会阻塞（等待回收）或失败</li>
+<li><strong>low（低水位）</strong>：空闲页低于这个值时，唤醒 kswapd 内核线程开始回收内存</li>
+<li><strong>high（高水位）</strong>：kswapd 回收内存直到空闲页达到这个值，然后停止回收</li>
+</ul>
+<figure class="highlight arcade"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><code class="hljs arcade">空闲页数<br>  ↑<br>  │  high ──────── kswapd 停止回收<br>  │<br>  │  low  ──────── kswapd 开始回收<br>  │<br>  │  <span class="hljs-built_in">min</span>  ──────── 分配阻塞/直接回收<br>  │<br>  └──────────────────────────────────→ 时间<br></code></pre></td></tr></table></figure>
+
+<p>水位线的计算基于 zone 的大小和 <code>vm.min_free_kbytes</code> 内核参数（保留的最低空闲内存）。可以通过 <code>/proc/sys/vm/min_free_kbytes</code> 调整，增大这个值会让系统更早开始回收内存，减少直接回收的概率（直接回收会阻塞进程，影响性能），但也会浪费更多内存。</p>
+<p>查看水位线：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">grep -E <span class="hljs-string">&quot;zone|min|low|high|free&quot;</span> /proc/zoneinfo | <span class="hljs-built_in">head</span> -30<br></code></pre></td></tr></table></figure>
+
+<h3 id="2-3-分配标志（GFP-flags）"><a href="#2-3-分配标志（GFP-flags）" class="headerlink" title="2.3 分配标志（GFP flags）"></a>2.3 分配标志（GFP flags）</h3><p>调用伙伴系统分配内存时，需要传入 GFP（Get Free Page）标志，告诉分配器这个分配的约束和行为：</p>
+<ul>
+<li><code>GFP_KERNEL</code>：内核分配，可以睡眠（阻塞等待回收），最常用</li>
+<li><code>GFP_ATOMIC</code>：原子分配，不能睡眠（中断上下文用），如果内存不够直接失败</li>
+<li><code>GFP_USER</code>：用户空间分配，可以睡眠</li>
+<li><code>GFP_HIGHUSER</code>：用户空间分配，优先从高端内存分配（32位系统）</li>
+<li><code>GFP_DMA</code>：从 ZONE_DMA 分配</li>
+<li><code>GFP_DMA32</code>：从 ZONE_DMA32 分配</li>
+<li><code>GFP_NOIO</code>：分配过程中不能触发 IO（比如在 IO 路径中分配，避免死锁）</li>
+<li><code>GFP_NOFS</code>：分配过程中不能触发文件系统操作（在文件系统代码中分配，避免死锁）</li>
+<li><code>__GFP_ZERO</code>：分配的页清零</li>
+<li><code>__GFP_HIGHMEM</code>：优先高端内存</li>
+<li><code>__GFP_RETRY_MAYFAIL</code>：重试，但可能失败</li>
+<li><code>__GFP_NORETRY</code>：不重试，失败直接返回</li>
+</ul>
+<p>GFP 标志决定了分配时可以从哪些 zone 分配、是否可以睡眠、是否可以触发回收和 IO、失败后是否重试等。</p>
+<h2 id="三、SLUB-分配器——小对象分配"><a href="#三、SLUB-分配器——小对象分配" class="headerlink" title="三、SLUB 分配器——小对象分配"></a>三、SLUB 分配器——小对象分配</h2><p>伙伴系统分配的最小单位是页（4KB），但内核里有大量小对象（比如 <code>struct file</code>、<code>struct inode</code>、<code>task_struct</code>、网络 sk_buff 等），大小从几十字节到几百字节，如果都用伙伴系统分配整页，内部碎片会非常严重。</p>
+<p>SLUB（也叫 SLUB allocator，是 SLAB 的改进版，Linux 2.6.23 后默认）是内核的小对象分配器，在伙伴系统之上，把整页拆分成固定大小的对象，高效分配和回收小对象。</p>
+<h3 id="3-1-原理"><a href="#3-1-原理" class="headerlink" title="3.1 原理"></a>3.1 原理</h3><p>SLUB 为每种对象类型创建一个 <strong>kmem_cache</strong>（缓存），每个缓存里的对象大小固定。比如：</p>
+<ul>
+<li><code>kmalloc-64</code>：64 字节对象的通用缓存</li>
+<li><code>kmalloc-128</code>：128 字节</li>
+<li><code>kmalloc-256</code>：256 字节</li>
+<li>…</li>
+<li><code>task_struct</code>：进程描述符（约 2KB）</li>
+<li><code>skbuff_head_cache</code>：sk_buff 结构体</li>
+<li><code>inode_cache</code>：inode 结构体</li>
+</ul>
+<p>每个 kmem_cache 由多个 <strong>slab</strong> 组成，每个 slab 是一个或多个连续的物理页（从伙伴系统分配），被拆分成多个固定大小的对象。</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><code class="hljs dns">kmem_cache <span class="hljs-punctuation">(</span>kmalloc-<span class="hljs-number">64</span><span class="hljs-punctuation">)</span><br>├── slab1 <span class="hljs-punctuation">(</span><span class="hljs-number">1</span>页=<span class="hljs-number">4</span>KB，分成 <span class="hljs-number">4096</span>/<span class="hljs-number">64</span>=<span class="hljs-number">64</span> 个对象<span class="hljs-punctuation">)</span><br>│   ├── 对象<span class="hljs-number">0</span>（已分配）<br>│   ├── 对象<span class="hljs-number">1</span>（空闲）<br>│   ├── 对象<span class="hljs-number">2</span>（已分配）<br>│   └── ...<br>├── slab2 <span class="hljs-punctuation">(</span><span class="hljs-number">1</span>页，<span class="hljs-number">64</span>个对象<span class="hljs-punctuation">)</span><br>└── slab3 <span class="hljs-punctuation">(</span><span class="hljs-number">1</span>页，<span class="hljs-number">64</span>个对象<span class="hljs-punctuation">)</span><br></code></pre></td></tr></table></figure>
+
+<p>每个 slab 有三种状态：</p>
+<ul>
+<li><strong>full</strong>：所有对象都已分配</li>
+<li><strong>partial</strong>：部分对象分配，部分空闲（分配时优先从 partial slab 分配）</li>
+<li><strong>free</strong>：所有对象都空闲（长时间 free 的 slab 会被回收，页还给伙伴系统）</li>
+</ul>
+<p>SLUB 用 per-CPU 的 partial slab 列表（<code>cpu_slab</code>）来加速分配，每个 CPU 有自己的 partial slab，分配时不需要加锁（无锁分配），只有 per-CPU 列表空了才需要从全局的 partial 列表获取，减少了锁竞争。</p>
+<h3 id="3-2-分配和回收"><a href="#3-2-分配和回收" class="headerlink" title="3.2 分配和回收"></a>3.2 分配和回收</h3><p><strong>分配</strong>：</p>
+<ol>
+<li>从当前 CPU 的 per-CPU partial slab 里找一个空闲对象，无锁分配</li>
+<li>如果 per-CPU 列表空了，从全局的 partial 列表获取一个 slab 到 per-CPU</li>
+<li>如果全局 partial 也空了，从伙伴系统分配新的页，创建一个新的 slab</li>
+<li>从 slab 里取一个空闲对象返回</li>
+</ol>
+<p><strong>回收</strong>：</p>
+<ol>
+<li>把对象标记为空闲，加入 slab 的空闲对象链表</li>
+<li>如果 slab 从 full 变成 partial，加入 partial 列表</li>
+<li>如果 slab 里所有对象都空闲了（变成 free slab），不会立即回收，而是保留在缓存里（避免频繁分配回收页）</li>
+<li>内存紧张时（kswapd 回收），或缓存被收缩时，free slab 的页被回收，还给伙伴系统</li>
+</ol>
+<h3 id="3-3-kmalloc"><a href="#3-3-kmalloc" class="headerlink" title="3.3 kmalloc"></a>3.3 kmalloc</h3><p><code>kmalloc</code> 是内核里最常用的内存分配函数，基于 SLUB 实现，分配一段连续的内核虚拟地址（也是连续的物理地址）。</p>
+<p><code>kmalloc</code> 有一系列大小等级（64、128、256、512、1024、2048、4096、8192…），分配时向上取整到最近的等级。比如 <code>kmalloc(100, GFP_KERNEL)</code> 会从 <code>kmalloc-128</code> 缓存分配，浪费 28 字节。</p>
+<p><code>kmalloc</code> 分配的内存在物理上是连续的（因为 SLUB 的 slab 是从伙伴系统分配的连续页），适合需要物理连续内存的场景（比如 DMA）。但分配大内存时（超过页大小的几倍），可能因为内存碎片而失败。</p>
+<p>查看 slab 信息：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-built_in">cat</span> /proc/slabinfo<br><span class="hljs-comment"># 名称  对象大小  活动对象数  总对象数  对象每页  ...</span><br><span class="hljs-comment"># kmalloc-64     64  12345  20000  64 ...</span><br>slabtop  <span class="hljs-comment"># 实时显示 slab 占用（类似 top）</span><br></code></pre></td></tr></table></figure>
+
+<h2 id="四、虚拟内存管理"><a href="#四、虚拟内存管理" class="headerlink" title="四、虚拟内存管理"></a>四、虚拟内存管理</h2><h3 id="4-1-虚拟地址和物理地址"><a href="#4-1-虚拟地址和物理地址" class="headerlink" title="4.1 虚拟地址和物理地址"></a>4.1 虚拟地址和物理地址</h3><p>Linux 用虚拟内存管理，每个进程有独立的虚拟地址空间，CPU 通过 MMU（Memory Management Unit）把虚拟地址翻译成物理地址。</p>
+<p>x86-64 的虚拟地址空间布局（48 位有效地址，256TB）：</p>
+<figure class="highlight lasso"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><code class="hljs lasso"><span class="hljs-number">0x0000000000000000</span> - <span class="hljs-number">0x00007FFFFFFFFFFF</span>  用户空间（<span class="hljs-number">128</span>TB）<br>  ├── 代码段（text）<br>  ├── 数据段（<span class="hljs-built_in">data</span>/bss）<br>  ├── 堆（heap，向上增长）<br>  ├── 共享库映射区（mmap）<br>  └── 栈（<span class="hljs-built_in">stack</span>，向下增长）<br><br><span class="hljs-number">0xFFFF800000000000</span> - <span class="hljs-number">0xFFFFFFFFFFFFFFFF</span>  内核空间（<span class="hljs-number">128</span>TB，所有进程共享）<br>  ├── 物理内存直接映射区（线性映射，__START_KERNEL_map）<br>  ├── vmalloc 区（非连续物理内存的虚拟映射）<br>  ├── 固定映射区<br>  └── <span class="hljs-params">...</span><br></code></pre></td></tr></table></figure>
+
+<p>内核空间的虚拟地址和物理地址有一个固定的偏移（线性映射），<code>__va(phys)</code> &#x3D; <code>phys + PAGE_OFFSET</code>，<code>__pa(virt)</code> &#x3D; <code>virt - PAGE_OFFSET</code>。所以内核里大部分地址（kmalloc、全局变量）都是直接映射的，物理地址连续。</p>
+<p><code>vmalloc</code> 分配的虚拟地址是连续的，但物理地址不一定连续（通过页表映射到不连续的物理页），适合分配大内存（不需要物理连续），但有 TLB 刷新开销，不能用于 DMA。</p>
+<h3 id="4-2-页表（Page-Table）"><a href="#4-2-页表（Page-Table）" class="headerlink" title="4.2 页表（Page Table）"></a>4.2 页表（Page Table）</h3><p>虚拟地址到物理地址的翻译通过页表实现。x86-64 用 4 级页表（5 级页表在 57 位地址系统上用）：</p>
+<figure class="highlight inform7"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><code class="hljs inform7">虚拟地址（48位）<br>┌──────────┬──────────┬──────────┬──────────┬──────────┐<br>│ PGD索引  │ PUD索引  │ PMD索引  │ PTE索引  │ 页内偏移  │<br>│  9位     │  9位     │  9位     │  9位     │  12位    │<br>└──────────┴──────────┴──────────┴──────────┴──────────┘<br><br>翻译过程：<br>CR3 寄存器 → PGD（全局页目录）的物理地址<br>PGD<span class="hljs-comment">[PGD索引]</span> → PUD（上级页目录）的物理地址<br>PUD<span class="hljs-comment">[PUD索引]</span> → PMD（中级页目录）的物理地址<br>PMD<span class="hljs-comment">[PMD索引]</span> → PTE（页表项）的物理地址<br>PTE<span class="hljs-comment">[PTE索引]</span> → 物理页号（PFN）<br>物理地址 = PFN &lt;&lt; 12 | 页内偏移<br></code></pre></td></tr></table></figure>
+
+<p>每个页表项（PTE）包含：</p>
+<ul>
+<li>物理页号（PFN）</li>
+<li>存在位（Present）：页是否在物理内存中</li>
+<li>读写位（R&#x2F;W）：页是否可写</li>
+<li>用户&#x2F;内核位（U&#x2F;S）：用户态是否可访问</li>
+<li>访问位（Accessed）：页是否被访问过（用于回收算法）</li>
+<li>脏位（Dirty）：页是否被修改过（回收时需要写回磁盘）</li>
+<li>NX 位（No Execute）：页是否不可执行（安全特性，防止代码注入）</li>
+</ul>
+<p>大页（HugePage）可以减少页表级数：2MB 大页用 PMD 直接指向物理页（跳过 PTE），1GB 大页用 PUD 直接指向物理页。大页的好处是减少页表项数量、减少 TLB miss、提高翻译速度，但内存浪费更大（内部碎片）。</p>
+<h3 id="4-3-TLB（Translation-Lookaside-Buffer）"><a href="#4-3-TLB（Translation-Lookaside-Buffer）" class="headerlink" title="4.3 TLB（Translation Lookaside Buffer）"></a>4.3 TLB（Translation Lookaside Buffer）</h3><p>TLB 是 MMU 里的高速缓存，缓存最近使用的虚拟地址到物理地址的翻译结果。每次地址翻译先查 TLB，命中就直接用，不命中（TLB miss）才需要遍历页表（慢，因为页表在内存里，要多次内存访问）。</p>
+<p>TLB 是 per-CPU 的，每个 CPU 有自己的 TLB。修改页表后（比如 <code>munmap</code>、<code>fork</code> 时写时复制），需要刷新 TLB（<code>tlb_flush</code>），让旧的翻译失效。TLB 刷新是有开销的（特别是多 CPU 系统，需要 IPI 中断其他 CPU 刷新），所以内核尽量减少 TLB 刷新。</p>
+<p>大页可以显著减少 TLB miss（因为一个大页覆盖的地址空间大，需要的 TLB 项少），数据库等内存密集型应用常用大页提升性能。</p>
+<p>查看 TLB 信息：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-built_in">cat</span> /proc/cpuinfo | grep -i tlb<br><span class="hljs-comment"># 或者用 perf 统计 TLB miss</span><br>perf <span class="hljs-built_in">stat</span> -e dTLB-load-misses,iTLB-load-misses ./myapp<br></code></pre></td></tr></table></figure>
+
+<h2 id="五、页缓存（Page-Cache）"><a href="#五、页缓存（Page-Cache）" class="headerlink" title="五、页缓存（Page Cache）"></a>五、页缓存（Page Cache）</h2><p>页缓存是 Linux 性能的核心机制之一，把磁盘文件的内容缓存在内存里，减少磁盘 IO。</p>
+<h3 id="5-1-原理"><a href="#5-1-原理" class="headerlink" title="5.1 原理"></a>5.1 原理</h3><p>当进程读取文件时，内核先检查页缓存里有没有对应的页：</p>
+<ul>
+<li><strong>命中</strong>：直接从内存读取，不需要磁盘 IO</li>
+<li><strong>未命中</strong>：从磁盘读取页到页缓存，然后从页缓存读取</li>
+</ul>
+<p>写入文件时（默认 <code>write</code> 是回写模式）：</p>
+<ul>
+<li>数据先写入页缓存，标记为脏页（dirty）</li>
+<li>由内核线程 <code>pdflush</code>&#x2F;<code>flusher</code> 周期性地把脏页写回磁盘</li>
+<li>进程不需要等待磁盘写入完成（异步写），除非用 <code>fsync</code>&#x2F;<code>O_SYNC</code> 强制同步</li>
+</ul>
+<p>页缓存用 <code>address_space</code> 结构管理，每个文件（inode）有一个 <code>address_space</code>，用基数树（radix tree，现在改成 XArray）索引文件偏移到页的映射。</p>
+<p>页缓存里的页有两种类型：</p>
+<ul>
+<li><strong>页缓存页（file-backed）</strong>：有文件 backing 的页，回收时如果干净直接丢弃，如果脏先写回磁盘再丢弃</li>
+<li><strong>匿名页（anonymous）</strong>：没有文件 backing 的页（进程的堆、栈、mmap 的匿名内存），回收时换出到 swap 分区</li>
+</ul>
+<h3 id="5-2-LRU-链表"><a href="#5-2-LRU-链表" class="headerlink" title="5.2 LRU 链表"></a>5.2 LRU 链表</h3><p>页缓存和匿名页都挂在 LRU（Least Recently Used）链表上，回收时按 LRU 算法回收最近最少使用的页。</p>
+<p>LRU 链表分两种（每种又分 active 和 inactive）：</p>
+<ul>
+<li><strong>文件页 LRU</strong>：页缓存页<ul>
+<li>active_file：活跃的文件页（最近被访问过，回收优先级低）</li>
+<li>inactive_file：不活跃的文件页（最近没被访问，回收优先）</li>
+</ul>
+</li>
+<li><strong>匿名页 LRU</strong>：匿名页<ul>
+<li>active_anon：活跃的匿名页</li>
+<li>inactive_anon：不活跃的匿名页</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight scss"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><code class="hljs scss">新分配的页 → inactive 链表<br>              │<br>              ├── 被访问 → 提升到 active 链表<br>              │<br>              └── 回收时 → 从 inactive 尾部回收（最久未使用）<br>              <br>active 链表的页 → 第二次被访问 → 留在 active<br>                → 长时间未访问 → 降级到 inactive<br></code></pre></td></tr></table></figure>
+
+<p>LRU 是双链表，新页加到头部，回收从尾部取（最久未使用）。页被访问时从当前位置移到头部（标记为活跃）。</p>
+<p>内核参数 <code>vm.swappiness</code>（0-100，默认 60）控制回收时更倾向回收文件页还是匿名页：</p>
+<ul>
+<li>值高（接近 100）：更倾向回收匿名页（换出到 swap）</li>
+<li>值低（接近 0）：更倾向回收文件页（丢弃或写回），尽量不用 swap</li>
+<li>0：完全不换出匿名页（除非内存真的不够）</li>
+</ul>
+<p>数据库等应用通常把 swappiness 设为 1-10，因为数据库的匿名页（缓存数据）比文件页更重要，不希望被换出。</p>
+<p>查看 LRU 信息：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-built_in">cat</span> /proc/meminfo | grep -i active<br><span class="hljs-comment"># Active:           1234567 kB</span><br><span class="hljs-comment"># Inactive:          234567 kB</span><br><span class="hljs-comment"># Active(anon):      345678 kB</span><br><span class="hljs-comment"># Inactive(anon):     12345 kB</span><br><span class="hljs-comment"># Active(file):      888889 kB</span><br><span class="hljs-comment"># Inactive(file):    222222 kB</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="5-3-写回机制"><a href="#5-3-写回机制" class="headerlink" title="5.3 写回机制"></a>5.3 写回机制</h3><p>脏页（dirty page）由 <code>flusher</code> 内核线程（以前叫 pdflush）负责写回磁盘，触发条件：</p>
+<ol>
+<li><strong>周期性写回</strong>：每隔 <code>vm.dirty_writeback_centisecs</code>（默认 500，即 5 秒），flusher 线程醒来，把脏页写回</li>
+<li><strong>脏页比例超过阈值</strong>：<ul>
+<li><code>vm.dirty_background_ratio</code>（默认 10%）：脏页占总内存比例超过这个值，唤醒 flusher 后台写回（不阻塞进程）</li>
+<li><code>vm.dirty_ratio</code>（默认 20%）：脏页比例超过这个值，进程的 <code>write</code> 会被阻塞，同步写回（防止脏页太多）</li>
+</ul>
+</li>
+<li><strong>进程主动调用 <code>fsync</code>&#x2F;<code>fdatasync</code></strong>：强制把文件的脏页写回磁盘</li>
+<li><code>sync</code> 系统调用：把所有脏页写回</li>
+</ol>
+<p>查看脏页信息：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-built_in">cat</span> /proc/meminfo | grep -i dirty<br><span class="hljs-comment"># Dirty:               1234 kB  （等待写回的脏页）</span><br><span class="hljs-comment"># Writeback:              0 kB  （正在写回的页）</span><br></code></pre></td></tr></table></figure>
+
+<h2 id="六、内存回收"><a href="#六、内存回收" class="headerlink" title="六、内存回收"></a>六、内存回收</h2><p>当内存不足时，内核需要回收一些页来满足新的分配请求。</p>
+<h3 id="6-1-kswapd（后台回收）"><a href="#6-1-kswapd（后台回收）" class="headerlink" title="6.1 kswapd（后台回收）"></a>6.1 kswapd（后台回收）</h3><p>每个 NUMA 节点有一个 <code>kswapd</code> 内核线程，当空闲页低于 <code>low</code> 水位线时被唤醒，开始回收内存，直到空闲页达到 <code>high</code> 水位线。</p>
+<p>kswapd 回收的页来源：</p>
+<ol>
+<li><strong>页缓存页</strong>：干净的页直接丢弃，脏页先写回磁盘再丢弃</li>
+<li><strong>匿名页</strong>：换出到 swap 分区（如果启用了 swap）</li>
+<li><strong>slab 缓存</strong>：回收 free 状态的 slab（<code>kmem_cache_shrink</code>）</li>
+</ol>
+<p>kswapd 是后台回收，不阻塞进程（异步）。但如果回收速度跟不上分配速度，空闲页继续下降到 <code>min</code> 水位线，就会触发直接回收。</p>
+<h3 id="6-2-直接回收（Direct-Reclaim）"><a href="#6-2-直接回收（Direct-Reclaim）" class="headerlink" title="6.2 直接回收（Direct Reclaim）"></a>6.2 直接回收（Direct Reclaim）</h3><p>当进程分配内存时，如果空闲页低于 <code>min</code> 水位线，进程会自己参与内存回收（在分配路径中同步回收），这就是直接回收。</p>
+<p>直接回收是<strong>阻塞</strong>的，进程要等回收完成才能继续分配，会导致进程延迟增加（卡顿）。生产环境里要尽量避免直接回收（通过增大 <code>min_free_kbytes</code>、调整 swappiness、增加内存等方式）。</p>
+<p>直接回收时，如果回收的页是脏页，还要等 IO 写回完成，延迟更大。可以用 <code>vm.dirty_ratio</code> 和 <code>vm.dirty_background_ratio</code> 控制脏页比例，避免直接回收时遇到大量脏页。</p>
+<h3 id="6-3-内存压缩（Memory-Compaction）"><a href="#6-3-内存压缩（Memory-Compaction）" class="headerlink" title="6.3 内存压缩（Memory Compaction）"></a>6.3 内存压缩（Memory Compaction）</h3><p>伙伴系统减少了外部碎片，但长时间运行后，仍然可能出现”总空闲内存够，但没有足够大的连续物理页”的情况（比如需要分配 order 5 的连续页，但空闲页都是零散的 order 0）。</p>
+<p>内存压缩（compaction）通过移动已分配的页，把空闲页聚合成连续的大块。它把一个 zone 里的页从尾部往头部移动，把空闲页集中在尾部，形成连续的大块。</p>
+<p>内存压缩由 <code>kcompactd</code> 内核线程在后台执行，也可以在分配大页失败时直接触发（直接压缩）。</p>
+<p>查看碎片信息：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-built_in">cat</span> /proc/buddyinfo<br><span class="hljs-comment"># 每个 node 的每个 zone，各 order 的空闲块数量</span><br><span class="hljs-comment"># Node 0, zone   Normal      0   1234   567   234   123   45   23   12   5   2   1</span><br><span class="hljs-comment"># order:                          0     1     2     3     4    5    6    7   8   9  10</span><br></code></pre></td></tr></table></figure>
+
+<p>如果高 order 的空闲块很少，说明碎片严重，可能需要触发压缩或重启。</p>
+<h2 id="七、OOM-Killer（Out-Of-Memory）"><a href="#七、OOM-Killer（Out-Of-Memory）" class="headerlink" title="七、OOM Killer（Out Of Memory）"></a>七、OOM Killer（Out Of Memory）</h2><p>如果内存回收（kswapd + 直接回收）后仍然不够，空闲页继续下降，内核会触发 OOM Killer，杀掉一个进程来释放内存。</p>
+<h3 id="7-1-OOM-选择算法"><a href="#7-1-OOM-选择算法" class="headerlink" title="7.1 OOM 选择算法"></a>7.1 OOM 选择算法</h3><p>OOM Killer 选择杀哪个进程，基于 <code>oom_score</code>（每个进程有一个分数），分数最高的被杀掉。</p>
+<p><code>oom_score</code> 的计算考虑：</p>
+<ul>
+<li>进程占用的内存（RSS，包括页缓存和匿名页）——占主要因素</li>
+<li>进程的运行时间（运行久的进程分数低一些，尽量不杀）</li>
+<li>进程的 nice 值（nice 高的优先级低，分数高一些）</li>
+<li>是否是 root 进程（root 进程分数低一些）</li>
+<li>是否是内核线程（不杀）</li>
+<li><code>oom_score_adj</code>（用户可以调整，-1000 到 1000，-1000 表示永远不被杀）</li>
+</ul>
+<p>OOM 的目标是：用最小的损失（杀最少的进程、杀最不重要的进程）释放足够的内存。</p>
+<h3 id="7-2-OOM-相关配置"><a href="#7-2-OOM-相关配置" class="headerlink" title="7.2 OOM 相关配置"></a>7.2 OOM 相关配置</h3><ul>
+<li><code>vm.panic_on_oom</code>：0（默认，OOM 时杀进程），1（OOM 时内核 panic，重启）。集群环境里有时设为 1，让故障节点快速重启，而不是半死不活。</li>
+<li><code>vm.oom_kill_allocating_task</code>：0（默认，杀分数最高的进程），1（杀触发 OOM 的当前进程）。</li>
+<li><code>/proc/&lt;pid&gt;/oom_score_adj</code>：调整进程的 OOM 分数，-1000 保护进程不被杀，1000 优先被杀。</li>
+<li><code>/proc/&lt;pid&gt;/oom_score</code>：只读，查看当前 OOM 分数。</li>
+</ul>
+<p>容器环境里，OOM 是 cgroup 级别的（cgroup v2 的 <code>memory.oom.group</code>），当 cgroup 内存超过 <code>memory.max</code> 时，cgroup 里的进程会被 OOM kill。Docker 的 <code>--memory</code> 参数就是设置 cgroup 的内存限制，超过就 OOM kill 容器里的进程。</p>
+<p>查看 OOM 日志：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><code class="hljs bash">dmesg | grep -i <span class="hljs-string">&quot;out of memory&quot;</span><br><span class="hljs-comment"># 或</span><br>journalctl -k | grep -i oom<br></code></pre></td></tr></table></figure>
+
+<h2 id="八、常见内存问题排查"><a href="#八、常见内存问题排查" class="headerlink" title="八、常见内存问题排查"></a>八、常见内存问题排查</h2><h3 id="8-1-内存泄漏"><a href="#8-1-内存泄漏" class="headerlink" title="8.1 内存泄漏"></a>8.1 内存泄漏</h3><p>现象：进程的 RSS（常驻内存）持续增长，不释放，最终 OOM。</p>
+<p>排查：</p>
+<ol>
+<li><code>top</code>&#x2F;<code>htop</code> 看哪个进程内存持续增长</li>
+<li><code>pmap -x &lt;pid&gt;</code> 看进程的内存映射分布</li>
+<li><code>cat /proc/&lt;pid&gt;/smaps</code> 详细看每个映射段的内存（RSS、PSS、Shared_Clean、Private_Dirty 等）</li>
+<li>用 <code>valgrind --leak-check=full</code> 检测 C&#x2F;C++ 程序的内存泄漏</li>
+<li>用 <code>gperftools</code>&#x2F;<code>jemalloc</code> 的内存分析功能</li>
+<li>Java 程序用 <code>jmap -heap</code>、<code>jstat -gc</code>、MAT 分析堆内存</li>
+</ol>
+<p>注意：Linux 的内存管理是”尽量用内存”的，空闲内存会被用作页缓存，所以 <code>free</code> 命令里的 <code>available</code> 才是真正可用的内存（包括可以回收的页缓存），不要看到 <code>free</code> 低就以为内存不够。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><code class="hljs bash">free -h<br><span class="hljs-comment">#               total        used        free      shared  buff/cache   available</span><br><span class="hljs-comment"># Mem:           31Gi       8.0Gi       1.2Gi       500Mi        22Gi        22Gi</span><br><span class="hljs-comment"># Swap:         8.0Gi          0B       8.0Gi</span><br><span class="hljs-comment"># available 才是可用内存（22Gi），不是 free（1.2Gi）</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="8-2-OOM-Kill"><a href="#8-2-OOM-Kill" class="headerlink" title="8.2 OOM Kill"></a>8.2 OOM Kill</h3><p>现象：进程突然被杀，<code>dmesg</code> 里有 OOM 日志。</p>
+<p>排查：</p>
+<ol>
+<li><code>dmesg | grep -i oom</code> 看 OOM 时的内存状态和被杀的进程</li>
+<li>检查是系统级 OOM 还是 cgroup 级 OOM（容器）</li>
+<li>系统级 OOM：看是否有进程内存泄漏，或内存确实不够</li>
+<li>cgroup 级 OOM：看容器的内存限制是否设置太小，或容器内进程内存泄漏</li>
+<li>检查 <code>vm.swappiness</code>、<code>vm.overcommit_memory</code>、<code>vm.overcommit_ratio</code> 等参数</li>
+</ol>
+<h3 id="8-3-内存碎片"><a href="#8-3-内存碎片" class="headerlink" title="8.3 内存碎片"></a>8.3 内存碎片</h3><p>现象：总空闲内存够，但分配大的连续物理页失败（比如 <code>dmesg</code> 里有 <code>order:5</code> 的分配失败日志），或 slab 分配失败。</p>
+<p>排查：</p>
+<ol>
+<li><code>cat /proc/buddyinfo</code> 看各 order 的空闲块数量</li>
+<li><code>cat /proc/pagetypeinfo</code> 更详细的页类型信息</li>
+<li>手动触发压缩：<code>echo 1 &gt; /proc/sys/vm/compact_memory</code></li>
+<li>长期运行的服务器建议定期重启，或用 <code>kexec</code> 快速重启</li>
+<li>用大页（HugePage）避免碎片问题（大页预留后不会被碎片影响）</li>
+</ol>
+<h3 id="8-4-Swap-使用过多"><a href="#8-4-Swap-使用过多" class="headerlink" title="8.4 Swap 使用过多"></a>8.4 Swap 使用过多</h3><p>现象：swap 使用率高，系统卡顿（swap in&#x2F;out 频繁）。</p>
+<p>排查：</p>
+<ol>
+<li><code>vmstat 1</code> 看 <code>si</code>（swap in）和 <code>so</code>（swap out）列，非零说明在频繁换页</li>
+<li>检查 <code>vm.swappiness</code> 是否设置过高</li>
+<li>看哪些进程的匿名页被换出了：<code>cat /proc/&lt;pid&gt;/smaps | grep Swap</code></li>
+<li>数据库等应用建议关闭 swap（<code>swapoff -a</code>）或设 swappiness&#x3D;1，避免数据库缓存被换出导致性能骤降</li>
+<li>增加物理内存，从根本上减少 swap 使用</li>
+</ol>
+<h3 id="8-5-常用内存调优参数"><a href="#8-5-常用内存调优参数" class="headerlink" title="8.5 常用内存调优参数"></a>8.5 常用内存调优参数</h3><table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>vm.min_free_kbytes</code></td>
+<td>自动计算</td>
+<td>保留的最低空闲内存，增大可减少直接回收</td>
+</tr>
+<tr>
+<td><code>vm.swappiness</code></td>
+<td>60</td>
+<td>回收倾向（0&#x3D;优先文件页，100&#x3D;优先匿名页）</td>
+</tr>
+<tr>
+<td><code>vm.dirty_ratio</code></td>
+<td>20</td>
+<td>脏页比例上限，超过则阻塞写</td>
+</tr>
+<tr>
+<td><code>vm.dirty_background_ratio</code></td>
+<td>10</td>
+<td>脏页比例触发后台写回</td>
+</tr>
+<tr>
+<td><code>vm.dirty_writeback_centisecs</code></td>
+<td>500</td>
+<td>脏页写回周期（5秒）</td>
+</tr>
+<tr>
+<td><code>vm.overcommit_memory</code></td>
+<td>0</td>
+<td>内存过量提交策略（0&#x3D;启发式，1&#x3D;总是允许，2&#x3D;严格）</td>
+</tr>
+<tr>
+<td><code>vm.overcommit_ratio</code></td>
+<td>50</td>
+<td>overcommit_memory&#x3D;2 时的物理内存百分比</td>
+</tr>
+<tr>
+<td><code>vm.panic_on_oom</code></td>
+<td>0</td>
+<td>OOM 时是否 panic</td>
+</tr>
+<tr>
+<td><code>vm.compact_memory</code></td>
+<td>-</td>
+<td>写 1 触发内存压缩</td>
+</tr>
+<tr>
+<td><code>vm.drop_caches</code></td>
+<td>-</td>
+<td>写 1 释放页缓存，2 释放 dentries&#x2F;inodes，3 都释放</td>
+</tr>
+</tbody></table>
+<p>注意：<code>drop_caches</code> 只能释放干净的页缓存，脏页需要先 <code>sync</code> 写回才能释放。生产环境不要随便 <code>drop_caches</code>，会导致性能抖动（缓存失效，大量磁盘 IO）。</p>
+<h2 id="九、总结"><a href="#九、总结" class="headerlink" title="九、总结"></a>九、总结</h2><p>Linux 内存管理的层次：</p>
+<ol>
+<li><strong>物理内存组织</strong>：NUMA 节点 → Zone（DMA&#x2F;DMA32&#x2F;NORMAL）→ 页（4KB&#x2F;2MB&#x2F;1GB）</li>
+<li><strong>物理页分配</strong>：伙伴系统（Buddy System），按 2 的幂次分配连续页，合并伙伴减少碎片</li>
+<li><strong>小对象分配</strong>：SLUB 分配器，在伙伴系统之上，把页拆分成固定大小对象，per-CPU 无锁分配</li>
+<li><strong>虚拟内存</strong>：4&#x2F;5 级页表，MMU + TLB 地址翻译，vmalloc 非连续映射</li>
+<li><strong>页缓存</strong>：文件内容缓存，LRU 链表管理，脏页异步写回</li>
+<li><strong>内存回收</strong>：kswapd 后台回收 + 直接回收，LRU 算法，文件页 vs 匿名页（swappiness）</li>
+<li><strong>OOM</strong>：内存不足时杀进程，基于 oom_score 选择</li>
+<li><strong>cgroup 内存</strong>：per-cgroup 内存限制和统计，容器级 OOM</li>
+</ol>
+<p>理解了这些层次，排查内存问题时就能从现象定位到具体层次：</p>
+<ul>
+<li>进程 RSS 持续增长 → 内存泄漏（应用层）</li>
+<li>系统 OOM → 回收不够或内存泄漏（回收层 + 应用层）</li>
+<li>大页分配失败 → 内存碎片（伙伴系统 + 压缩）</li>
+<li>swap 频繁 → 内存不足或 swappiness 配置（回收层）</li>
+<li>写性能差 → 脏页比例过高或写回瓶颈（页缓存 + 写回）</li>
+<li>容器 OOM → cgroup 内存限制太小或容器内泄漏（cgroup 层）</li>
+</ul>
+<p>内存管理是 Linux 内核最复杂的部分，这篇文章只是覆盖了核心概念和常见问题，深入学习还需要看源码（<code>mm/</code> 目录）和相关论文。但掌握这些基础，足够应对日常运维中的大部分内存问题了。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/Linux/" class="category-chain-item">Linux</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/Linux/%E5%86%85%E6%A0%B8/" class="category-chain-item">内核</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" class="print-no-link">#内存管理</a>
+      
+        <a href="/tags/%E4%BC%99%E4%BC%B4%E7%B3%BB%E7%BB%9F/" class="print-no-link">#伙伴系统</a>
+      
+        <a href="/tags/SLUB/" class="print-no-link">#SLUB</a>
+      
+        <a href="/tags/%E9%A1%B5%E7%BC%93%E5%AD%98/" class="print-no-link">#页缓存</a>
+      
+        <a href="/tags/OOM/" class="print-no-link">#OOM</a>
+      
+        <a href="/tags/kswapd/" class="print-no-link">#kswapd</a>
+      
+        <a href="/tags/NUMA/" class="print-no-link">#NUMA</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>Linux 内存管理深度解析——伙伴系统、SLUB、页缓存与 OOM</div>
+      <div>https://zhb816.github.io/2026/07/20/linux-memory-management-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年7月20日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/07/25/linux-container-internals-deep-dive/" title="容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">容器底层原理全拆解——namespace、cgroup、rootfs 与手动造容器</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

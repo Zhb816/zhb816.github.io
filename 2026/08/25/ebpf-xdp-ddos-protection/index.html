@@ -1,0 +1,944 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="传统的 DDoS 防护要么靠硬件防火墙（贵），要么靠 iptables（慢，在内核协议栈深处处理）。eBPF + XDP 提供了第三种选择：在网卡驱动层、报文进入内核协议栈之前就把攻击包丢掉，性能接近硬件级。 这篇文章从 eBPF 原理讲到 XDP 实战，最后写一个能跑的 SYN Flood 防护程序。 一、eBPF 到底是什么eBPF（extended Berkeley Packet Filte">
+<meta property="og:type" content="article">
+<meta property="og:title" content="eBPF 实战——用 XDP 做线速 DDoS 防护">
+<meta property="og:url" content="https://zhb816.github.io/2026/08/25/ebpf-xdp-ddos-protection/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="传统的 DDoS 防护要么靠硬件防火墙（贵），要么靠 iptables（慢，在内核协议栈深处处理）。eBPF + XDP 提供了第三种选择：在网卡驱动层、报文进入内核协议栈之前就把攻击包丢掉，性能接近硬件级。 这篇文章从 eBPF 原理讲到 XDP 实战，最后写一个能跑的 SYN Flood 防护程序。 一、eBPF 到底是什么eBPF（extended Berkeley Packet Filte">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-08-25T14:30:00.000Z">
+<meta property="article:modified_time" content="2026-09-04T07:47:40.498Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="BPF">
+<meta property="article:tag" content="DDoS">
+<meta property="article:tag" content="XDP">
+<meta property="article:tag" content="eBPF">
+<meta property="article:tag" content="内核网络">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+  
+  <title>eBPF 实战——用 XDP 做线速 DDoS 防护 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="eBPF 实战——用 XDP 做线速 DDoS 防护"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-08-25 22:30" pubdate>
+          2026年8月25日 晚上
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          6k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          51 分钟
+        
+      </span>
+    
+
+    
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">eBPF 实战——用 XDP 做线速 DDoS 防护</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>传统的 DDoS 防护要么靠硬件防火墙（贵），要么靠 iptables（慢，在内核协议栈深处处理）。eBPF + XDP 提供了第三种选择：在网卡驱动层、报文进入内核协议栈之前就把攻击包丢掉，性能接近硬件级。</p>
+<p>这篇文章从 eBPF 原理讲到 XDP 实战，最后写一个能跑的 SYN Flood 防护程序。</p>
+<h2 id="一、eBPF-到底是什么"><a href="#一、eBPF-到底是什么" class="headerlink" title="一、eBPF 到底是什么"></a>一、eBPF 到底是什么</h2><p>eBPF（extended Berkeley Packet Filter）是 Linux 内核里的一个<strong>虚拟机</strong>，可以让用户把一段小程序加载到内核里，在内核的特定钩子点（hook point）执行。</p>
+<p>关键点：</p>
+<ul>
+<li><strong>安全</strong>：eBPF 程序加载前会经过内核验证器（verifier）检查，不能有循环、不能越界访问、不能崩溃内核</li>
+<li><strong>高效</strong>：程序编译成 BPF 字节码，内核 JIT 编译成本地机器码执行，几乎没有性能损耗</li>
+<li><strong>可编程</strong>：不需要重新编译内核，不需要加载内核模块，用户态程序加载 eBPF 程序就能动态修改内核行为</li>
+</ul>
+<p>eBPF 可以挂载的钩子点非常多：</p>
+<ul>
+<li>网络：XDP（网卡驱动层）、TC（流量控制层）、socket 层</li>
+<li>跟踪：kprobe、uprobe、tracepoint、perf event</li>
+<li>安全：LSM（Linux Security Module）</li>
+<li>cgroup：在 cgroup 层级上做网络和资源控制</li>
+</ul>
+<h2 id="二、XDP-为什么快"><a href="#二、XDP-为什么快" class="headerlink" title="二、XDP 为什么快"></a>二、XDP 为什么快</h2><p>XDP（eXpress Data Path）是 eBPF 在网络数据路径上最早、最经典的应用。它的钩子点在<strong>网卡驱动的收包路径上</strong>，报文刚从 DMA 缓冲区拿出来，还没进入内核协议栈，就可以被 XDP 程序处理。</p>
+<p>对比一下传统 iptables 和 XDP 的处理路径：</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><code class="hljs dns">传统 iptables 路径：<br>网卡 → 驱动 → 协议栈<span class="hljs-punctuation">(</span>IP层<span class="hljs-punctuation">)</span> → conntrack → iptables<span class="hljs-punctuation">(</span>INPUT<span class="hljs-punctuation">)</span> → 本地进程<br>                                    ↑ 在这里才开始过滤，已经做了很多无用功<br><br>XDP 路径：<br>网卡 → 驱动 → XDP程序 → 丢包/转发/上送协议栈<br>               ↑ 在这里就可以丢包，连 sk_buff 都还没分配<br></code></pre></td></tr></table></figure>
+
+<p>性能差距有多大？官方测试数据：</p>
+<ul>
+<li>iptables：单核约 1-2 Mpps（百万包每秒）</li>
+<li>XDP：单核约 10-20 Mpps，支持多队列网卡横向扩展</li>
+</ul>
+<p>原因很简单：XDP 处理时，报文还在驱动的 page buffer 里，<strong>不需要分配 sk_buff</strong>（这是内核网络栈里最重的操作之一），不需要经过 conntrack，不需要走 Netfilter 的一条条规则链。</p>
+<h2 id="三、XDP-程序的返回值"><a href="#三、XDP-程序的返回值" class="headerlink" title="三、XDP 程序的返回值"></a>三、XDP 程序的返回值</h2><p>XDP 程序处理完一个报文后，必须返回一个动作，告诉内核接下来怎么办：</p>
+<table>
+<thead>
+<tr>
+<th>返回值</th>
+<th>含义</th>
+<th>性能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>XDP_DROP</code></td>
+<td>丢弃报文</td>
+<td>最快，直接释放 page</td>
+</tr>
+<tr>
+<td><code>XDP_PASS</code></td>
+<td>上送协议栈，正常处理</td>
+<td>正常路径</td>
+</tr>
+<tr>
+<td><code>XDP_TX</code></td>
+<td>从同一个网卡发回去</td>
+<td>快，不需要进协议栈</td>
+</tr>
+<tr>
+<td><code>XDP_REDIRECT</code></td>
+<td>转发到另一个网卡或 CPU</td>
+<td>快，用于负载均衡&#x2F;路由</td>
+</tr>
+<tr>
+<td><code>XDP_ABORTED</code></td>
+<td>程序出错，丢弃</td>
+<td>错误路径</td>
+</tr>
+</tbody></table>
+<p>做 DDoS 防护，核心就是在 XDP 程序里判断”这个包是不是攻击包”，是就返回 <code>XDP_DROP</code>，不是就返回 <code>XDP_PASS</code>。</p>
+<h2 id="四、实战：SYN-Flood-防护"><a href="#四、实战：SYN-Flood-防护" class="headerlink" title="四、实战：SYN Flood 防护"></a>四、实战：SYN Flood 防护</h2><p>SYN Flood 是最经典的 DDoS 攻击：攻击者大量发送 TCP SYN 包，但不完成三次握手，把服务器的半连接队列占满，正常用户连不上。</p>
+<p>传统防御靠 syncookies（有性能开销）和防火墙限速。用 XDP 可以在报文刚到网卡时就把异常 SYN 丢掉。</p>
+<h3 id="4-1-环境准备"><a href="#4-1-环境准备" class="headerlink" title="4.1 环境准备"></a>4.1 环境准备</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 内核版本要求 &gt;= 4.18（推荐 5.4+）</span><br><span class="hljs-built_in">uname</span> -r<br><br><span class="hljs-comment"># 安装依赖</span><br><span class="hljs-comment"># Ubuntu/Debian</span><br>apt install -y clang llvm libelf-dev libbpf-dev bpfcc-tools linux-headers-$(<span class="hljs-built_in">uname</span> -r)<br><br><span class="hljs-comment"># CentOS/RHEL</span><br>yum install -y clang llvm elfutils-libelf-devel bpftool<br></code></pre></td></tr></table></figure>
+
+<h3 id="4-2-XDP-程序（C-语言，编译成-BPF-字节码）"><a href="#4-2-XDP-程序（C-语言，编译成-BPF-字节码）" class="headerlink" title="4.2 XDP 程序（C 语言，编译成 BPF 字节码）"></a>4.2 XDP 程序（C 语言，编译成 BPF 字节码）</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br></pre></td><td class="code"><pre><code class="hljs c"><span class="hljs-comment">// syn_flood_kern.c</span><br><span class="hljs-meta">#<span class="hljs-keyword">include</span> <span class="hljs-string">&lt;linux/bpf.h&gt;</span></span><br><span class="hljs-meta">#<span class="hljs-keyword">include</span> <span class="hljs-string">&lt;linux/if_ether.h&gt;</span></span><br><span class="hljs-meta">#<span class="hljs-keyword">include</span> <span class="hljs-string">&lt;linux/ip.h&gt;</span></span><br><span class="hljs-meta">#<span class="hljs-keyword">include</span> <span class="hljs-string">&lt;linux/tcp.h&gt;</span></span><br><span class="hljs-meta">#<span class="hljs-keyword">include</span> <span class="hljs-string">&lt;bpf/bpf_helpers.h&gt;</span></span><br><span class="hljs-meta">#<span class="hljs-keyword">include</span> <span class="hljs-string">&lt;bpf/bpf_endian.h&gt;</span></span><br><br><span class="hljs-comment">// 定义一个 BPF map，用于记录每个源IP的SYN包计数</span><br><span class="hljs-comment">// key: 源IP (4字节)</span><br><span class="hljs-comment">// value: 计数 + 时间戳</span><br><span class="hljs-class"><span class="hljs-keyword">struct</span> &#123;</span><br>    __uint(type, BPF_MAP_TYPE_LRU_HASH);<br>    __uint(max_entries, <span class="hljs-number">100000</span>);<br>    __type(key, __u32);<br>    __type(value, <span class="hljs-keyword">struct</span> syn_stats);<br>&#125; syn_counters <span class="hljs-title function_">SEC</span><span class="hljs-params">(<span class="hljs-string">&quot;.maps&quot;</span>)</span>;<br><br><span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">syn_stats</span> &#123;</span><br>    __u64 count;       <span class="hljs-comment">// SYN包计数</span><br>    __u64 last_update; <span class="hljs-comment">// 最后更新时间(ns)</span><br>    __u64 blocked;     <span class="hljs-comment">// 是否被封禁</span><br>&#125;;<br><br><span class="hljs-comment">// 阈值：每秒超过100个SYN包视为攻击</span><br><span class="hljs-meta">#<span class="hljs-keyword">define</span> SYN_THRESHOLD 100</span><br><span class="hljs-comment">// 封禁持续时间：60秒</span><br><span class="hljs-meta">#<span class="hljs-keyword">define</span> BLOCK_DURATION_NS (60ULL * 1000 * 1000 * 1000)</span><br><br>SEC(<span class="hljs-string">&quot;xdp&quot;</span>)<br><span class="hljs-type">int</span> <span class="hljs-title function_">syn_flood_protect</span><span class="hljs-params">(<span class="hljs-keyword">struct</span> xdp_md *ctx)</span><br>&#123;<br>    <span class="hljs-type">void</span> *data_end = (<span class="hljs-type">void</span> *)(<span class="hljs-type">long</span>)ctx-&gt;data_end;<br>    <span class="hljs-type">void</span> *data = (<span class="hljs-type">void</span> *)(<span class="hljs-type">long</span>)ctx-&gt;data;<br><br>    <span class="hljs-comment">// 解析以太网头</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">ethhdr</span> *<span class="hljs-title">eth</span> =</span> data;<br>    <span class="hljs-keyword">if</span> ((<span class="hljs-type">void</span> *)(eth + <span class="hljs-number">1</span>) &gt; data_end)<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br><br>    <span class="hljs-comment">// 只处理IPv4</span><br>    <span class="hljs-keyword">if</span> (eth-&gt;h_proto != bpf_htons(ETH_P_IP))<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br><br>    <span class="hljs-comment">// 解析IP头</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">iphdr</span> *<span class="hljs-title">ip</span> =</span> (<span class="hljs-type">void</span> *)(eth + <span class="hljs-number">1</span>);<br>    <span class="hljs-keyword">if</span> ((<span class="hljs-type">void</span> *)(ip + <span class="hljs-number">1</span>) &gt; data_end)<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br><br>    <span class="hljs-comment">// 只处理TCP</span><br>    <span class="hljs-keyword">if</span> (ip-&gt;protocol != IPPROTO_TCP)<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br><br>    <span class="hljs-comment">// 解析TCP头（注意IP头可能有选项，要用ihl计算实际长度）</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">tcphdr</span> *<span class="hljs-title">tcp</span> =</span> (<span class="hljs-type">void</span> *)ip + (ip-&gt;ihl * <span class="hljs-number">4</span>);<br>    <span class="hljs-keyword">if</span> ((<span class="hljs-type">void</span> *)(tcp + <span class="hljs-number">1</span>) &gt; data_end)<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br><br>    <span class="hljs-comment">// 只关心SYN包（SYN=1, ACK=0）</span><br>    <span class="hljs-keyword">if</span> (!tcp-&gt;syn || tcp-&gt;ack)<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br><br>    __u32 src_ip = ip-&gt;saddr;<br>    __u64 now = bpf_ktime_get_ns();<br><br>    <span class="hljs-comment">// 查找或创建该源IP的统计记录</span><br>    <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">syn_stats</span> *<span class="hljs-title">stats</span> =</span> bpf_map_lookup_elem(&amp;syn_counters, &amp;src_ip);<br>    <span class="hljs-keyword">if</span> (!stats) &#123;<br>        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">syn_stats</span> <span class="hljs-title">new_stats</span> =</span> &#123;<br>            .count = <span class="hljs-number">1</span>,<br>            .last_update = now,<br>            .blocked = <span class="hljs-number">0</span><br>        &#125;;<br>        bpf_map_update_elem(&amp;syn_counters, &amp;src_ip, &amp;new_stats, BPF_ANY);<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br>    &#125;<br><br>    <span class="hljs-comment">// 如果已经被封禁，检查是否过了封禁时间</span><br>    <span class="hljs-keyword">if</span> (stats-&gt;blocked) &#123;<br>        <span class="hljs-keyword">if</span> (now - stats-&gt;last_update &gt; BLOCK_DURATION_NS) &#123;<br>            <span class="hljs-comment">// 解封，重置计数</span><br>            stats-&gt;count = <span class="hljs-number">1</span>;<br>            stats-&gt;last_update = now;<br>            stats-&gt;blocked = <span class="hljs-number">0</span>;<br>            <span class="hljs-keyword">return</span> XDP_PASS;<br>        &#125;<br>        <span class="hljs-comment">// 仍在封禁期，丢弃</span><br>        <span class="hljs-keyword">return</span> XDP_DROP;<br>    &#125;<br><br>    <span class="hljs-comment">// 滑动窗口：如果距离上次更新超过1秒，重置计数</span><br>    <span class="hljs-keyword">if</span> (now - stats-&gt;last_update &gt; <span class="hljs-number">1000000000ULL</span>) &#123;<br>        stats-&gt;count = <span class="hljs-number">1</span>;<br>        stats-&gt;last_update = now;<br>        <span class="hljs-keyword">return</span> XDP_PASS;<br>    &#125;<br><br>    <span class="hljs-comment">// 计数+1</span><br>    stats-&gt;count++;<br>    stats-&gt;last_update = now;<br><br>    <span class="hljs-comment">// 超过阈值，封禁</span><br>    <span class="hljs-keyword">if</span> (stats-&gt;count &gt; SYN_THRESHOLD) &#123;<br>        stats-&gt;blocked = <span class="hljs-number">1</span>;<br>        bpf_printk(<span class="hljs-string">&quot;XDP: Blocked SYN flood from %pI4, count: %d\n&quot;</span>,<br>                   &amp;src_ip, stats-&gt;count);<br>        <span class="hljs-keyword">return</span> XDP_DROP;<br>    &#125;<br><br>    <span class="hljs-keyword">return</span> XDP_PASS;<br>&#125;<br><br><span class="hljs-type">char</span> _license[] SEC(<span class="hljs-string">&quot;license&quot;</span>) = <span class="hljs-string">&quot;GPL&quot;</span>;<br></code></pre></td></tr></table></figure>
+
+<h3 id="4-3-编译和加载"><a href="#4-3-编译和加载" class="headerlink" title="4.3 编译和加载"></a>4.3 编译和加载</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 编译成 BPF 字节码</span><br>clang -O2 -g -target bpf -c syn_flood_kern.c -o syn_flood_kern.o<br><br><span class="hljs-comment"># 查看编译出的 section</span><br>bpftool obj dump file syn_flood_kern.o<br><br><span class="hljs-comment"># 加载到网卡（以 eth0 为例）</span><br>ip <span class="hljs-built_in">link</span> <span class="hljs-built_in">set</span> dev eth0 xdp obj syn_flood_kern.o sec xdp<br><br><span class="hljs-comment"># 查看是否加载成功</span><br>ip <span class="hljs-built_in">link</span> show eth0<br><span class="hljs-comment"># 应该能看到 xdp 标志</span><br><br><span class="hljs-comment"># 查看被丢弃的包数</span><br>bpftool prog show<br><span class="hljs-comment"># 找到 xdp 程序的 id，然后</span><br>bpftool prog run &lt;<span class="hljs-built_in">id</span>&gt;<br></code></pre></td></tr></table></figure>
+
+<h3 id="4-4-用户态控制程序（可选）"><a href="#4-4-用户态控制程序（可选）" class="headerlink" title="4.4 用户态控制程序（可选）"></a>4.4 用户态控制程序（可选）</h3><p>用 Python + bcc 可以更方便地加载和管理：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><code class="hljs python"><span class="hljs-comment">#!/usr/bin/env python3</span><br><span class="hljs-comment"># syn_flood_user.py</span><br><span class="hljs-keyword">from</span> bcc <span class="hljs-keyword">import</span> BPF<br><span class="hljs-keyword">import</span> time<br><span class="hljs-keyword">import</span> sys<br><br><span class="hljs-keyword">if</span> <span class="hljs-built_in">len</span>(sys.argv) &lt; <span class="hljs-number">2</span>:<br>    <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;Usage: <span class="hljs-subst">&#123;sys.argv[<span class="hljs-number">0</span>]&#125;</span> &lt;interface&gt;&quot;</span>)<br>    sys.exit(<span class="hljs-number">1</span>)<br><br>interface = sys.argv[<span class="hljs-number">1</span>]<br><br><span class="hljs-comment"># 加载 eBPF 程序</span><br>b = BPF(src_file=<span class="hljs-string">&quot;syn_flood_kern.c&quot;</span>)<br>fn = b.load_func(<span class="hljs-string">&quot;syn_flood_protect&quot;</span>, BPF.XDP)<br>b.attach_xdp(interface, fn, <span class="hljs-number">0</span>)<br><br><span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;XDP SYN flood protection attached to <span class="hljs-subst">&#123;interface&#125;</span>&quot;</span>)<br><span class="hljs-built_in">print</span>(<span class="hljs-string">&quot;Press Ctrl+C to stop...&quot;</span>)<br><br><span class="hljs-comment"># 周期性打印统计</span><br><span class="hljs-keyword">try</span>:<br>    <span class="hljs-keyword">while</span> <span class="hljs-literal">True</span>:<br>        time.sleep(<span class="hljs-number">5</span>)<br>        counters = b[<span class="hljs-string">&quot;syn_counters&quot;</span>]<br>        blocked = <span class="hljs-number">0</span><br>        total = <span class="hljs-number">0</span><br>        <span class="hljs-keyword">for</span> k, v <span class="hljs-keyword">in</span> counters.items():<br>            total += <span class="hljs-number">1</span><br>            <span class="hljs-keyword">if</span> v.blocked:<br>                blocked += <span class="hljs-number">1</span><br>                ip = <span class="hljs-string">f&quot;<span class="hljs-subst">&#123;k.value &amp; <span class="hljs-number">0xff</span>&#125;</span>.<span class="hljs-subst">&#123;(k.value &gt;&gt; <span class="hljs-number">8</span>) &amp; <span class="hljs-number">0xff</span>&#125;</span>.<span class="hljs-subst">&#123;(k.value &gt;&gt; <span class="hljs-number">16</span>) &amp; <span class="hljs-number">0xff</span>&#125;</span>.<span class="hljs-subst">&#123;(k.value &gt;&gt; <span class="hljs-number">24</span>) &amp; <span class="hljs-number">0xff</span>&#125;</span>&quot;</span><br>                <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;  Blocked: <span class="hljs-subst">&#123;ip&#125;</span>, SYN count: <span class="hljs-subst">&#123;v.count&#125;</span>&quot;</span>)<br>        <span class="hljs-built_in">print</span>(<span class="hljs-string">f&quot;[<span class="hljs-subst">&#123;time.strftime(<span class="hljs-string">&#x27;%H:%M:%S&#x27;</span>)&#125;</span>] Tracked IPs: <span class="hljs-subst">&#123;total&#125;</span>, Blocked: <span class="hljs-subst">&#123;blocked&#125;</span>&quot;</span>)<br><span class="hljs-keyword">except</span> KeyboardInterrupt:<br>    <span class="hljs-built_in">print</span>(<span class="hljs-string">&quot;\nRemoving XDP program...&quot;</span>)<br>    b.remove_xdp(interface, <span class="hljs-number">0</span>)<br>    <span class="hljs-built_in">print</span>(<span class="hljs-string">&quot;Done.&quot;</span>)<br></code></pre></td></tr></table></figure>
+
+<p>运行：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">python3 syn_flood_user.py eth0<br></code></pre></td></tr></table></figure>
+
+<h2 id="五、进阶方向"><a href="#五、进阶方向" class="headerlink" title="五、进阶方向"></a>五、进阶方向</h2><p>这个程序只是最基础的版本，生产环境用的 XDP DDoS 防护会复杂得多：</p>
+<ol>
+<li><strong>更精细的检测</strong>：不只是按源IP计数，还要结合 TCP 选项、TTL、报文大小分布等特征识别攻击</li>
+<li><strong>SYN Cookie</strong>：XDP 层面实现 SYN Cookie，不需要占用半连接队列</li>
+<li><strong>多队列支持</strong>：现代网卡有多队列，XDP 程序在每个队列上都跑，需要用 per-CPU map 避免锁竞争</li>
+<li><strong>offload 到网卡</strong>：支持 XDP offload 的智能网卡（如 Netronome&#x2F;Mellanox）可以把 eBPF 程序卸载到网卡硬件，完全不耗 CPU</li>
+<li><strong>和用户态联动</strong>：XDP 只做快速路径的丢弃，复杂分析（如流量画像、攻击溯源）放到用户态程序，通过 BPF map 交换数据</li>
+</ol>
+<h2 id="六、小结"><a href="#六、小结" class="headerlink" title="六、小结"></a>六、小结</h2><p>eBPF + XDP 把网络数据包的处理能力从内核协议栈下沉到了网卡驱动层，让纯软件方案也能达到接近硬件的性能。除了 DDoS 防护，XDP 还广泛用于：</p>
+<ul>
+<li>负载均衡（Facebook 的 Katran，用 XDP 做 L4 LB）</li>
+<li>流量镜像和监控</li>
+<li>容器网络（Cilium 用 eBPF 替代 iptables 做 Service 转发）</li>
+<li>防火墙（替代 iptables&#x2F;nftables）</li>
+</ul>
+<p>学 eBPF 的门槛确实不低，要懂内核网络栈、C 语言、BPF 指令集，但一旦掌握，相当于拿到了内核编程的”超能力”。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/Linux/" class="category-chain-item">Linux</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/Linux/%E5%86%85%E6%A0%B8/" class="category-chain-item">内核</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/eBPF/" class="print-no-link">#eBPF</a>
+      
+        <a href="/tags/XDP/" class="print-no-link">#XDP</a>
+      
+        <a href="/tags/DDoS/" class="print-no-link">#DDoS</a>
+      
+        <a href="/tags/%E5%86%85%E6%A0%B8%E7%BD%91%E7%BB%9C/" class="print-no-link">#内核网络</a>
+      
+        <a href="/tags/BPF/" class="print-no-link">#BPF</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>eBPF 实战——用 XDP 做线速 DDoS 防护</div>
+      <div>https://zhb816.github.io/2026/08/25/ebpf-xdp-ddos-protection/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年8月25日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/08/28/python-network-inspection-script/" title="用 Python 写了个简单的设备巡检脚本">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">用 Python 写了个简单的设备巡检脚本</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/08/22/kubernetes-networking-deep-dive/" title="Kubernetes 网络底层原理——从 Pod IP 到 Service 全链路解析">
+                        <span class="hidden-mobile">Kubernetes 网络底层原理——从 Pod IP 到 Service 全链路解析</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>
