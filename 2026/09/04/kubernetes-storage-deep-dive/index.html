@@ -1,0 +1,1240 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="Kubernetes 的存储体系是很多人学 K8s 时最头疼的部分。PV、PVC、StorageClass、CSI、Provisioner、VolumeMode、AccessMode……概念一大堆，关系错综复杂。这篇文章从底层原理讲起，把 K8s 存储的全链路理清楚，包括动态供给的完整流程、CSI 的工作机制、常见存储类型的对比，以及生产环境的最佳实践。 一、为什么 Kubernetes 需要复杂">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路">
+<meta property="og:url" content="https://zhb816.github.io/2026/09/04/kubernetes-storage-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="Kubernetes 的存储体系是很多人学 K8s 时最头疼的部分。PV、PVC、StorageClass、CSI、Provisioner、VolumeMode、AccessMode……概念一大堆，关系错综复杂。这篇文章从底层原理讲起，把 K8s 存储的全链路理清楚，包括动态供给的完整流程、CSI 的工作机制、常见存储类型的对比，以及生产环境的最佳实践。 一、为什么 Kubernetes 需要复杂">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-09-04T02:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-06T05:58:12.360Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="CSI">
+<meta property="article:tag" content="Kubernetes">
+<meta property="article:tag" content="PV">
+<meta property="article:tag" content="PVC">
+<meta property="article:tag" content="StorageClass">
+<meta property="article:tag" content="存储">
+<meta property="article:tag" content="容器存储">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+    <meta name="referrer" content="no-referrer-when-downgrade">
+  
+  
+  <title>Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-09-04 10:00" pubdate>
+          2026年9月4日 上午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          9.5k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          80 分钟
+        
+      </span>
+    
+
+    
+    
+      
+        <span id="busuanzi_container_page_pv" style="display: none">
+          <i class="iconfont icon-eye" aria-hidden="true"></i>
+          <span id="busuanzi_value_page_pv"></span> 次
+        </span>
+        
+
+      
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>Kubernetes 的存储体系是很多人学 K8s 时最头疼的部分。PV、PVC、StorageClass、CSI、Provisioner、VolumeMode、AccessMode……概念一大堆，关系错综复杂。这篇文章从底层原理讲起，把 K8s 存储的全链路理清楚，包括动态供给的完整流程、CSI 的工作机制、常见存储类型的对比，以及生产环境的最佳实践。</p>
+<h2 id="一、为什么-Kubernetes-需要复杂的存储体系"><a href="#一、为什么-Kubernetes-需要复杂的存储体系" class="headerlink" title="一、为什么 Kubernetes 需要复杂的存储体系"></a>一、为什么 Kubernetes 需要复杂的存储体系</h2><p>容器是临时的，容器销毁后里面的数据就没了。但很多应用（数据库、日志、文件服务）需要持久化存储，数据不能丢。Kubernetes 不能直接把宿主机目录挂给容器——那样会和特定节点绑定，容器漂移到其他节点就访问不到数据了，而且多租户环境下也不安全。</p>
+<p>所以 K8s 设计了一套抽象层，把”存储的供给”和”存储的使用”解耦：</p>
+<ul>
+<li><strong>存储管理员</strong>：负责提供存储资源（创建 PV、配置 StorageClass）</li>
+<li><strong>应用开发者</strong>：只需要声明需要多大的存储、什么访问模式（创建 PVC），不需要关心存储从哪来、怎么实现</li>
+<li><strong>Kubernetes</strong>：自动把 PVC 和合适的 PV 绑定，把存储挂载到容器里</li>
+</ul>
+<p>这套解耦设计让应用开发者不需要懂底层存储（Ceph、NFS、云盘），存储管理员也不需要关心哪个应用在用存储。</p>
+<h2 id="二、核心概念详解"><a href="#二、核心概念详解" class="headerlink" title="二、核心概念详解"></a>二、核心概念详解</h2><h3 id="2-1-Volume（卷）"><a href="#2-1-Volume（卷）" class="headerlink" title="2.1 Volume（卷）"></a>2.1 Volume（卷）</h3><p>Volume 是 K8s 里最基础的存储概念，就是 Pod 里容器可以访问的一个目录。Volume 的生命周期和 Pod 绑定，Pod 销毁了 Volume 也没了（但数据可能还在底层存储上）。</p>
+<p>K8s 支持几十种 Volume 类型，常见的：</p>
+<ul>
+<li><strong>emptyDir</strong>：Pod 调度到节点时创建的空目录，Pod 销毁就没了，用于临时数据、缓存</li>
+<li><strong>hostPath</strong>：把宿主机的目录挂进容器，有安全风险，只用于特定场景（如需要访问 Docker 套接字）</li>
+<li><strong>nfs</strong>：挂载 NFS 共享目录</li>
+<li><strong>cephfs &#x2F; rbd</strong>：挂载 Ceph 文件系统或块存储</li>
+<li><strong>configMap &#x2F; secret</strong>：把配置或密钥以文件形式挂进容器</li>
+<li><strong>persistentVolumeClaim</strong>：引用一个 PVC，使用持久化存储</li>
+</ul>
+<p>emptyDir 和 hostPath 是节点本地存储，不能跨节点。持久化存储需要用 PV&#x2F;PVC。</p>
+<h3 id="2-2-PV（PersistentVolume，持久卷）"><a href="#2-2-PV（PersistentVolume，持久卷）" class="headerlink" title="2.2 PV（PersistentVolume，持久卷）"></a>2.2 PV（PersistentVolume，持久卷）</h3><p>PV 是集群里的一块存储资源，由管理员创建（或由 StorageClass 动态创建）。PV 是集群级别的资源，不属于任何命名空间。</p>
+<p>PV 的关键属性：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">PersistentVolume</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">pv-example</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">capacity:</span><br>    <span class="hljs-attr">storage:</span> <span class="hljs-string">10Gi</span>          <span class="hljs-comment"># 存储容量</span><br>  <span class="hljs-attr">accessModes:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">ReadWriteOnce</span>        <span class="hljs-comment"># 访问模式</span><br>  <span class="hljs-attr">persistentVolumeReclaimPolicy:</span> <span class="hljs-string">Retain</span>  <span class="hljs-comment"># 回收策略</span><br>  <span class="hljs-attr">storageClassName:</span> <span class="hljs-string">slow</span>   <span class="hljs-comment"># 存储类名</span><br>  <span class="hljs-attr">mountOptions:</span>            <span class="hljs-comment"># 挂载选项</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">hard</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">nfsvers=4.1</span><br>  <span class="hljs-attr">nfs:</span>                     <span class="hljs-comment"># 底层存储类型</span><br>    <span class="hljs-attr">path:</span> <span class="hljs-string">/tmp</span><br>    <span class="hljs-attr">server:</span> <span class="hljs-number">172.17</span><span class="hljs-number">.0</span><span class="hljs-number">.2</span><br></code></pre></td></tr></table></figure>
+
+<p><strong>访问模式（AccessModes）</strong>：</p>
+<ul>
+<li><code>ReadWriteOnce</code>（RWO）：只能被一个节点以读写模式挂载。最常用，大多数云盘和块存储只支持这个</li>
+<li><code>ReadOnlyMany</code>（ROX）：可以被多个节点以只读模式挂载</li>
+<li><code>ReadWriteMany</code>（RWX）：可以被多个节点以读写模式挂载。需要文件存储（NFS、CephFS、GlusterFS），块存储不支持</li>
+<li><code>ReadWriteOncePod</code>（RWOP）：只能被一个 Pod 挂载，K8s 1.27+ 引入，比 RWO 更严格</li>
+</ul>
+<p>注意：访问模式是 PV 的能力声明，不是强制限制。即使 PV 支持 RWX，实际能不能多节点读写取决于底层存储。</p>
+<p><strong>回收策略（ReclaimPolicy）</strong>：</p>
+<ul>
+<li><code>Retain</code>：PVC 删除后，PV 保留，数据也保留，需要管理员手动清理。生产环境推荐</li>
+<li><code>Delete</code>：PVC 删除后，PV 和底层存储一起删除。动态供给默认是 Delete，有数据丢失风险，重要数据要改成 Retain</li>
+<li><code>Recycle</code>：已废弃，不推荐</li>
+</ul>
+<p><strong>PV 的状态（Phase）</strong>：</p>
+<ul>
+<li><code>Available</code>：可用，还没被绑定</li>
+<li><code>Bound</code>：已绑定到某个 PVC</li>
+<li><code>Released</code>：PVC 已删除，但 PV 还没被回收（Retain 策略时）</li>
+<li><code>Failed</code>：回收失败</li>
+</ul>
+<h3 id="2-3-PVC（PersistentVolumeClaim，持久卷声明）"><a href="#2-3-PVC（PersistentVolumeClaim，持久卷声明）" class="headerlink" title="2.3 PVC（PersistentVolumeClaim，持久卷声明）"></a>2.3 PVC（PersistentVolumeClaim，持久卷声明）</h3><p>PVC 是用户对存储的需求声明，属于某个命名空间。用户不需要知道 PV 的细节，只需要说”我要 10G 存储、读写模式、这个存储类”，K8s 自动找合适的 PV 绑定。</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">PersistentVolumeClaim</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">pvc-example</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">accessModes:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">ReadWriteOnce</span><br>  <span class="hljs-attr">resources:</span><br>    <span class="hljs-attr">requests:</span><br>      <span class="hljs-attr">storage:</span> <span class="hljs-string">10Gi</span><br>  <span class="hljs-attr">storageClassName:</span> <span class="hljs-string">slow</span><br></code></pre></td></tr></table></figure>
+
+<p>PVC 和 PV 的绑定规则：</p>
+<ol>
+<li><strong>存储类匹配</strong>：PVC 的 storageClassName 必须和 PV 的一致（或都为空）</li>
+<li><strong>访问模式匹配</strong>：PVC 要求的访问模式，PV 必须支持</li>
+<li><strong>容量匹配</strong>：PV 的容量必须 &gt;&#x3D; PVC 请求的容量</li>
+<li><strong>一对一绑定</strong>：一个 PV 只能绑定一个 PVC，绑定后 PV 就被独占了</li>
+<li><strong>静态绑定优先</strong>：如果有现成的 Available PV 满足条件，优先绑定；没有才走动态供给</li>
+</ol>
+<p>绑定是单向的：PVC 绑定到 PV 后，即使有更小的 PV 释放出来，也不会重新绑定。</p>
+<h3 id="2-4-StorageClass（存储类）"><a href="#2-4-StorageClass（存储类）" class="headerlink" title="2.4 StorageClass（存储类）"></a>2.4 StorageClass（存储类）</h3><p>StorageClass 是存储的”模板”，定义了动态创建 PV 的参数。有了 StorageClass，管理员不需要预先创建一堆 PV，用户创建 PVC 时，K8s 自动根据 StorageClass 创建 PV。</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">storage.k8s.io/v1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">StorageClass</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">csi-ceph-sc</span><br><span class="hljs-attr">provisioner:</span> <span class="hljs-string">rook-ceph.cephfs.csi.ceph.com</span>  <span class="hljs-comment"># 存储供给者</span><br><span class="hljs-attr">parameters:</span>                                    <span class="hljs-comment"># 供给参数，传给 provisioner</span><br>  <span class="hljs-attr">clusterID:</span> <span class="hljs-string">rook-ceph</span><br>  <span class="hljs-attr">fsName:</span> <span class="hljs-string">myfs</span><br>  <span class="hljs-attr">pool:</span> <span class="hljs-string">myfs-data0</span><br><span class="hljs-attr">reclaimPolicy:</span> <span class="hljs-string">Retain</span>                          <span class="hljs-comment"># 回收策略</span><br><span class="hljs-attr">allowVolumeExpansion:</span> <span class="hljs-literal">true</span>                     <span class="hljs-comment"># 允许扩容</span><br><span class="hljs-attr">volumeBindingMode:</span> <span class="hljs-string">WaitForFirstConsumer</span>        <span class="hljs-comment"># 绑定模式</span><br><span class="hljs-attr">mountOptions:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-string">debug</span><br></code></pre></td></tr></table></figure>
+
+<p><strong>关键参数</strong>：</p>
+<ul>
+<li><code>provisioner</code>：决定了用哪个存储插件来创建 PV。可以是 in-tree（K8s 内置的，如 kubernetes.io&#x2F;aws-ebs）或 CSI（容器存储接口，如 cephfs.csi.ceph.com）</li>
+<li><code>parameters</code>：传给 provisioner 的参数，不同存储类型参数不同。比如 Ceph 的 pool、CephFS 的 fsName、AWS EBS 的 type</li>
+<li><code>reclaimPolicy</code>：动态创建的 PV 的回收策略，默认 Delete</li>
+<li><code>allowVolumeExpansion</code>：是否允许 PVC 扩容。设为 true 后，用户修改 PVC 的 storage 请求大小，K8s 自动扩容 PV 和文件系统</li>
+<li><code>volumeBindingMode</code>：<ul>
+<li><code>Immediate</code>：PVC 创建后立即绑定和创建 PV（默认）</li>
+<li><code>WaitForFirstConsumer</code>：延迟绑定，等第一个使用这个 PVC 的 Pod 被调度后，再根据 Pod 所在节点创建 PV。这样可以避免 PV 创建在 Pod 无法访问的节点上（比如云盘有可用区限制）。生产环境推荐用这个</li>
+</ul>
+</li>
+</ul>
+<p><strong>默认 StorageClass</strong>：集群里可以有多个 StorageClass，其中一个可以标记为默认（annotation <code>storageclass.kubernetes.io/is-default-class: &quot;true&quot;</code>）。用户创建 PVC 时不指定 storageClassName，就用默认的。</p>
+<h3 id="2-5-CSI（Container-Storage-Interface，容器存储接口）"><a href="#2-5-CSI（Container-Storage-Interface，容器存储接口）" class="headerlink" title="2.5 CSI（Container Storage Interface，容器存储接口）"></a>2.5 CSI（Container Storage Interface，容器存储接口）</h3><p>CSI 是 K8s 存储体系里最重要的演进。在 CSI 之前，K8s 的存储插件（in-tree）是写在 K8s 源码里的，每加一种存储都要改 K8s 代码、发版，存储厂商很痛苦，K8s 社区也维护不过来。</p>
+<p>CSI 把存储插件从 K8s 核心里剥离出来，定义了一套标准的 gRPC 接口。存储厂商只要实现 CSI 接口，就能在 K8s 里用，不需要改 K8s 源码，插件可以独立部署和升级。</p>
+<p>CSI 的规范定义了三类 gRPC 服务：</p>
+<p><strong>1. Identity Service（身份服务）</strong></p>
+<ul>
+<li><code>GetPluginInfo</code>：返回插件名称和版本</li>
+<li><code>GetPluginCapabilities</code>：返回插件支持的能力（是否支持动态供给、是否支持扩容等）</li>
+<li><code>Probe</code>：健康检查</li>
+</ul>
+<p><strong>2. Controller Service（控制器服务）</strong></p>
+<ul>
+<li><code>CreateVolume</code>：创建存储卷（动态供给）</li>
+<li><code>DeleteVolume</code>：删除存储卷</li>
+<li><code>ControllerPublishVolume</code>：把卷发布（挂载）到节点上（比如云盘挂载到 EC2 实例）</li>
+<li><code>ControllerUnpublishVolume</code>：从节点上卸载卷</li>
+<li><code>ValidateVolumeCapabilities</code>：验证卷的能力（访问模式、卷类型）</li>
+<li><code>ListVolumes</code>：列出所有卷</li>
+<li><code>GetCapacity</code>：获取存储池容量</li>
+<li><code>ControllerExpandVolume</code>：扩容卷</li>
+<li><code>CreateSnapshot</code> &#x2F; <code>DeleteSnapshot</code>：创建&#x2F;删除快照</li>
+</ul>
+<p><strong>3. Node Service（节点服务）</strong></p>
+<ul>
+<li><code>NodeStageVolume</code>：在节点上格式化并挂载卷到全局目录（staging 路径）</li>
+<li><code>NodeUnstageVolume</code>：卸载 staging 路径</li>
+<li><code>NodePublishVolume</code>：把卷从 staging 路径绑定挂载到 Pod 的目录</li>
+<li><code>NodeUnpublishVolume</code>：解绑 Pod 目录</li>
+<li><code>NodeGetVolumeStats</code>：获取卷的使用情况（容量、inode）</li>
+<li><code>NodeExpandVolume</code>：节点上扩容文件系统</li>
+<li><code>NodeGetCapabilities</code>：节点能力</li>
+</ul>
+<p>CSI 插件的部署架构：</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><code class="hljs dart">        ┌─────────────────────────────────┐<br>        │         <span class="hljs-title class_">Controller</span> <span class="hljs-title class_">Pod</span>          │<br>        │  (<span class="hljs-title class_">StatefulSet</span>/<span class="hljs-title class_">Deployment</span>)       │<br>        │  - <span class="hljs-keyword">external</span>-provisioner         │<br>        │  - <span class="hljs-keyword">external</span>-attacher            │<br>        │  - <span class="hljs-keyword">external</span>-resizer             │<br>        │  - <span class="hljs-keyword">external</span>-snapshotter         │<br>        │  - csi-<span class="hljs-title function_">controller</span>(driver)       │<br>        └─────────────────────────────────┘<br>                        │ gRPC<br>        ┌───────────────┴───────────────┐<br>        │                               │<br>┌───────▼───────┐               ┌───────▼───────┐<br>│   <span class="hljs-title class_">Node</span> <span class="hljs-title class_">Pod</span>    │               │   <span class="hljs-title class_">Node</span> <span class="hljs-title class_">Pod</span>    │<br>│  (<span class="hljs-title class_">DaemonSet</span>)  │      ...      │  (<span class="hljs-title class_">DaemonSet</span>)  │<br>│ - node-driver │               │ - node-driver │<br>│   registrar   │               │   registrar   │<br>└───────────────┘               └───────────────┘<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>Controller 组件</strong>：以 Deployment 或 StatefulSet 运行，负责卷的创建、删除、挂载到节点、扩容、快照。通常包含多个 sidecar 容器：<ul>
+<li><code>external-provisioner</code>：监听 PVC，调用 CSI CreateVolume 创建卷，创建 PV</li>
+<li><code>external-attacher</code>：监听 VolumeAttachment，调用 CSI ControllerPublishVolume 把卷挂载到节点</li>
+<li><code>external-resizer</code>：监听 PVC 容量变化，调用 CSI ControllerExpandVolume 扩容</li>
+<li><code>external-snapshotter</code>：监听 VolumeSnapshot，调用 CSI CreateSnapshot 创建快照</li>
+<li><code>csi-controller</code>：存储厂商实现的 CSI 控制器驱动，实际执行 gRPC 调用</li>
+</ul>
+</li>
+<li><strong>Node 组件</strong>：以 DaemonSet 运行在每个节点上，负责卷在节点上的格式化、挂载到 Pod。包含：<ul>
+<li><code>node-driver-registrar</code>：把 CSI 驱动注册到 kubelet</li>
+<li><code>csi-node</code>：存储厂商实现的 CSI 节点驱动</li>
+</ul>
+</li>
+</ul>
+<p>这些 sidecar 是 K8s 官方维护的通用组件，存储厂商只需要实现 CSI driver（controller 和 node 的 gRPC 接口），不需要自己写 K8s 集成逻辑。</p>
+<h2 id="三、动态供给全流程"><a href="#三、动态供给全流程" class="headerlink" title="三、动态供给全流程"></a>三、动态供给全流程</h2><p>理解了概念，现在走一遍动态供给的完整流程，看看从用户创建 PVC 到容器里能访问存储，中间发生了什么。</p>
+<p>场景：用户创建了一个 10G 的 PVC，StorageClass 是 csi-ceph-sc，provisioner 是 Ceph CSI，然后创建一个 Pod 挂载这个 PVC。</p>
+<p><strong>第1步：用户创建 PVC</strong></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">kubectl apply -f pvc.yaml<br></code></pre></td></tr></table></figure>
+<p>K8s API Server 接收 PVC，状态为 Pending。</p>
+<p><strong>第2步：PV 控制器检查绑定</strong><br>PV 控制器（运行在 kube-controller-manager 里）发现新的 PVC，开始找匹配的 PV：</p>
+<ul>
+<li>如果有现成的 Available PV 满足条件（存储类、访问模式、容量），直接绑定，PVC 状态变 Bound</li>
+<li>如果没有，且 PVC 指定了 StorageClass，走动态供给流程</li>
+</ul>
+<p><strong>第3步：external-provisioner 触发动态供给</strong><br>external-provisioner（CSI controller pod 里的 sidecar）监听 PVC，发现这个 PVC 需要动态供给：</p>
+<ol>
+<li>调用 CSI driver 的 <code>CreateVolume</code> gRPC 接口，传入卷名、容量、参数（从 StorageClass 的 parameters 来）</li>
+<li>CSI driver 调用底层存储 API（比如 Ceph 的 rbd create），实际创建存储卷</li>
+<li>CreateVolume 返回卷的 ID 和上下文信息</li>
+<li>external-provisioner 根据返回信息创建一个 PV 对象，PV 的 spec 里包含卷 ID、存储类、容量、访问模式、CSI 驱动信息</li>
+<li>PV 控制器把 PV 和 PVC 绑定，PVC 状态变 Bound</li>
+</ol>
+<p>如果 StorageClass 的 volumeBindingMode 是 WaitForFirstConsumer，这一步会暂停，等 Pod 调度后再继续。</p>
+<p><strong>第4步：Pod 调度</strong><br>用户创建 Pod，引用这个 PVC。kube-scheduler 调度 Pod 到某个节点。调度时会考虑卷的拓扑约束（比如云盘只能在特定可用区使用），WaitForFirstConsumer 模式下，provisioner 会等调度结果再创建 PV，确保 PV 创建在 Pod 能访问的位置。</p>
+<p><strong>第5步：external-attacher 挂载卷到节点</strong><br>Pod 调度到节点后，kubelet 发现 Pod 有 PVC，需要挂载卷。kubelet 创建一个 VolumeAttachment 对象，表示”把这个卷挂载到这个节点”。</p>
+<p>external-attacher 监听 VolumeAttachment：</p>
+<ol>
+<li>调用 CSI driver 的 <code>ControllerPublishVolume</code> gRPC 接口，传入卷 ID 和节点 ID</li>
+<li>CSI driver 调用底层存储 API（比如 Ceph 的 rbd map，或 AWS 的 attach-volume），把卷挂载到目标节点</li>
+<li>卷在节点上出现为一个块设备（如 &#x2F;dev&#x2F;rbd0）</li>
+</ol>
+<p><strong>第6步：kubelet 调用 CSI Node 格式化和挂载</strong><br>卷挂载到节点后，kubelet 通过 CSI socket 调用节点上的 CSI node driver：</p>
+<ol>
+<li><strong>NodeStageVolume</strong>：格式化块设备（如果是块存储且第一次使用），挂载到节点上的 staging 目录（如 &#x2F;var&#x2F;lib&#x2F;kubelet&#x2F;plugins&#x2F;kubernetes.io&#x2F;csi&#x2F;pv&#x2F;pv-name&#x2F;globalmount）</li>
+<li><strong>NodePublishVolume</strong>：把 staging 目录绑定挂载（bind mount）到 Pod 的卷目录（如 &#x2F;var&#x2F;lib&#x2F;kubelet&#x2F;pods&#x2F;pod-uid&#x2F;volumes&#x2F;kubernetes.io~csi&#x2F;pv-name&#x2F;mount）</li>
+</ol>
+<p>如果是文件存储（NFS、CephFS），没有 ControllerPublishVolume 这一步，直接 NodeStageVolume 挂载网络文件系统。</p>
+<p><strong>第7步：容器启动，访问存储</strong><br>kubelet 启动容器，把 Pod 的卷目录挂载到容器里的指定路径（volumeMounts.mountPath）。容器里的应用就能读写这个目录了，数据存在底层存储上，容器销毁后数据还在。</p>
+<p><strong>删除流程（反过来）</strong>：</p>
+<ol>
+<li>用户删除 Pod → kubelet 调用 NodeUnpublishVolume 解绑 → NodeUnstageVolume 卸载 staging</li>
+<li>kubelet 删除 VolumeAttachment → external-attacher 调用 ControllerUnpublishVolume 从节点卸载卷</li>
+<li>用户删除 PVC → 如果 ReclaimPolicy 是 Delete，external-provisioner 调用 DeleteVolume 删除底层存储卷和 PV；如果是 Retain，PV 保留为 Released 状态，数据还在</li>
+</ol>
+<h2 id="四、常见存储类型对比"><a href="#四、常见存储类型对比" class="headerlink" title="四、常见存储类型对比"></a>四、常见存储类型对比</h2><p>K8s 支持的存储类型很多，选择时要考虑性能、可靠性、访问模式、成本、运维复杂度。</p>
+<table>
+<thead>
+<tr>
+<th>存储类型</th>
+<th>代表</th>
+<th>AccessMode</th>
+<th>性能</th>
+<th>适用场景</th>
+<th>缺点</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>公有云块存储</td>
+<td>AWS EBS、阿里云盘、Cinder</td>
+<td>RWO</td>
+<td>高</td>
+<td>数据库、有状态应用</td>
+<td>单节点挂载，有可用区限制</td>
+</tr>
+<tr>
+<td>Ceph RBD</td>
+<td>自建 Ceph 块存储</td>
+<td>RWO</td>
+<td>中高</td>
+<td>数据库、通用块存储</td>
+<td>运维复杂</td>
+</tr>
+<tr>
+<td>CephFS</td>
+<td>自建 Ceph 文件存储</td>
+<td>RWX</td>
+<td>中</td>
+<td>共享文件、日志、内容管理</td>
+<td>小文件性能一般</td>
+</tr>
+<tr>
+<td>NFS</td>
+<td>自建或 NAS</td>
+<td>RWX</td>
+<td>低中</td>
+<td>共享文件、静态资源</td>
+<td>单点故障、性能差</td>
+</tr>
+<tr>
+<td>GlusterFS</td>
+<td>分布式文件存储</td>
+<td>RWX</td>
+<td>中</td>
+<td>共享文件</td>
+<td>社区不活跃</td>
+</tr>
+<tr>
+<td>对象存储</td>
+<td>S3、MinIO、Swift</td>
+<td>不通过PV</td>
+<td>高(并发)</td>
+<td>图片、视频、备份、静态资源</td>
+<td>不能直接挂载为文件系统(需s3fs)</td>
+</tr>
+<tr>
+<td>Local PV</td>
+<td>节点本地磁盘</td>
+<td>RWO</td>
+<td>极高</td>
+<td>对延迟敏感的数据库</td>
+<td>节点故障数据丢失，不能漂移</td>
+</tr>
+</tbody></table>
+<p><strong>生产环境选型建议</strong>：</p>
+<ul>
+<li><strong>数据库（MySQL、PostgreSQL、MongoDB）</strong>：用块存储（云盘或 Ceph RBD），RWO，IOPS 高的型号。不要用 NFS，性能和一致性都不行</li>
+<li><strong>共享文件（多个 Pod 同时读写）</strong>：用 CephFS 或云厂商的 NAS（RWX）</li>
+<li><strong>日志收集</strong>：可以用 HostPath 或 Local PV，日志不需要持久化到分布式存储</li>
+<li><strong>大文件&#x2F;静态资源</strong>：用对象存储，通过 SDK 访问，不要挂载为文件系统</li>
+<li><strong>对延迟极度敏感</strong>：用 Local PV，但要做好应用层的数据冗余和故障转移</li>
+</ul>
+<h2 id="五、生产环境最佳实践"><a href="#五、生产环境最佳实践" class="headerlink" title="五、生产环境最佳实践"></a>五、生产环境最佳实践</h2><h3 id="5-1-存储类配置"><a href="#5-1-存储类配置" class="headerlink" title="5.1 存储类配置"></a>5.1 存储类配置</h3><ul>
+<li><strong>volumeBindingMode 用 WaitForFirstConsumer</strong>：避免 PV 创建在 Pod 无法访问的可用区，尤其是云盘场景</li>
+<li><strong>reclaimPolicy 用 Retain</strong>：重要数据的 StorageClass 一定要设 Retain，防止误删 PVC 导致数据丢失</li>
+<li><strong>allowVolumeExpansion 设为 true</strong>：允许在线扩容，避免空间不够时要重建卷</li>
+<li><strong>多个 StorageClass 区分性能等级</strong>：比如一个 SSD 高性能类、一个 HDD 大容量类，让用户按需选择</li>
+<li><strong>默认 StorageClass 要谨慎</strong>：默认类应该是最通用、最便宜的，高性能类不要设为默认</li>
+</ul>
+<h3 id="5-2-PVC-使用"><a href="#5-2-PVC-使用" class="headerlink" title="5.2 PVC 使用"></a>5.2 PVC 使用</h3><ul>
+<li><strong>不要在 PVC 里写死 storageClassName</strong>：除非明确需要特定存储类，否则用默认类，提高可移植性</li>
+<li><strong>合理设置容量</strong>：PV 绑定后不能缩小（大多数存储不支持缩容），容量要留余量但不要浪费</li>
+<li><strong>重要数据定期备份</strong>：用 VolumeSnapshot 做快照，或用 Velero 做集群级备份</li>
+<li><strong>监控卷使用率</strong>：用 kubelet 的 volume_stats 或 Prometheus 监控，防止磁盘写满</li>
+</ul>
+<h3 id="5-3-性能优化"><a href="#5-3-性能优化" class="headerlink" title="5.3 性能优化"></a>5.3 性能优化</h3><ul>
+<li><strong>块存储用 ext4 或 xfs</strong>：xfs 更适合大文件和高并发，ext4 更通用</li>
+<li><strong>数据库用 IOPS 高的存储类型</strong>：云盘选 SSD 或更高等级，Ceph 用 SSD 做 OSD 日志</li>
+<li><strong>避免小文件大量随机读写</strong>：CephFS 和 NFS 对小文件随机读写性能差，尽量用块存储</li>
+<li><strong>Local PV 用于缓存</strong>：把缓存、临时数据放 Local PV，持久数据放分布式存储</li>
+</ul>
+<h3 id="5-4-安全"><a href="#5-4-安全" class="headerlink" title="5.4 安全"></a>5.4 安全</h3><ul>
+<li><strong>不要用 hostPath</strong>：hostPath 可以访问宿主机文件系统，有容器逃逸风险，除非明确需要且做好安全上下文</li>
+<li><strong>存储加密</strong>：敏感数据用存储层加密（云盘加密、Ceph 加密）或应用层加密</li>
+<li><strong>RBAC 限制 PVC 创建</strong>：多租户环境下，通过 ResourceQuota 限制每个命名空间的 PVC 数量和总容量，防止滥用</li>
+</ul>
+<h2 id="六、常见问题排查"><a href="#六、常见问题排查" class="headerlink" title="六、常见问题排查"></a>六、常见问题排查</h2><p><strong>PVC 一直 Pending</strong>：</p>
+<ol>
+<li>没有匹配的 PV，且 StorageClass 的 provisioner 有问题 → 检查 provisioner pod 日志</li>
+<li>StorageClass 不存在或拼写错误 → <code>kubectl get sc</code></li>
+<li>容量不够，没有 PV 满足 → 检查 PV 容量</li>
+<li>WaitForFirstConsumer 模式，还没有 Pod 使用这个 PVC → 创建 Pod 后自动绑定</li>
+</ol>
+<p><strong>Pod 一直 ContainerCreating，挂载卷失败</strong>：</p>
+<ol>
+<li>卷还没挂载到节点 → 检查 VolumeAttachment 状态，看 attacher 日志</li>
+<li>格式化失败（比如已有文件系统但参数不对）→ 看 CSI node 日志，dmesg 看内核错误</li>
+<li>节点上的 CSI driver 没运行 → 检查 DaemonSet pod</li>
+<li>存储端权限问题 → 检查存储的访问权限、密钥</li>
+</ol>
+<p><strong>扩容不生效</strong>：</p>
+<ol>
+<li>StorageClass 的 allowVolumeExpansion 不是 true → 修改 StorageClass</li>
+<li>文件系统没扩容 → 某些存储需要重启 Pod 触发 NodeExpandVolume，或手动扩容</li>
+<li>CSI driver 不支持扩容 → 检查插件能力</li>
+</ol>
+<p><strong>数据丢失</strong>：</p>
+<ol>
+<li>ReclaimPolicy 是 Delete，误删 PVC → 重要数据一定要设 Retain</li>
+<li>节点故障，Local PV 数据丢失 → Local PV 不保证数据安全，重要数据不要用</li>
+<li>存储端故障 → 检查存储集群健康状态，从备份恢复</li>
+</ol>
+<h2 id="七、总结"><a href="#七、总结" class="headerlink" title="七、总结"></a>七、总结</h2><p>K8s 存储体系的核心就三层抽象：</p>
+<ol>
+<li><strong>PV</strong>：集群里的存储资源，管理员管</li>
+<li><strong>PVC</strong>：用户的存储需求声明，开发者管</li>
+<li><strong>StorageClass</strong>：动态创建 PV 的模板，定义了用什么存储、什么参数</li>
+</ol>
+<p>CSI 把存储插件从 K8s 核心剥离，存储厂商实现标准 gRPC 接口就能接入，是 K8s 存储的现在和未来。</p>
+<p>动态供给的全流程：PVC 创建 → provisioner 调 CreateVolume 创建卷和 PV → 绑定 → Pod 调度 → attacher 调 ControllerPublish 挂载到节点 → kubelet 调 NodeStage 格式化挂载 → NodePublish 绑定到 Pod 目录 → 容器访问。</p>
+<p>理解了这个流程，遇到任何存储问题都能一步步定位：是 PV 没创建？还是没绑定？还是没挂载到节点？还是节点上格式化失败？每一步都有对应的组件和日志可以查。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/" class="category-chain-item">云计算</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/Kubernetes/" class="category-chain-item">Kubernetes</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/Kubernetes/" class="print-no-link">#Kubernetes</a>
+      
+        <a href="/tags/PV/" class="print-no-link">#PV</a>
+      
+        <a href="/tags/PVC/" class="print-no-link">#PVC</a>
+      
+        <a href="/tags/StorageClass/" class="print-no-link">#StorageClass</a>
+      
+        <a href="/tags/CSI/" class="print-no-link">#CSI</a>
+      
+        <a href="/tags/%E5%AD%98%E5%82%A8/" class="print-no-link">#存储</a>
+      
+        <a href="/tags/%E5%AE%B9%E5%99%A8%E5%AD%98%E5%82%A8/" class="print-no-link">#容器存储</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路</div>
+      <div>https://zhb816.github.io/2026/09/04/kubernetes-storage-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年9月4日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/09/05/hybrid-cloud-networking-deep-dive/" title="混合云网络架构深度解析——专线、VPN、云企业网与跨云互联">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">混合云网络架构深度解析——专线、VPN、云企业网与跨云互联</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/09/03/openstack-architecture-deep-dive/" title="OpenStack 架构深度解析——从组件协作到虚拟机创建全流程">
+                        <span class="hidden-mobile">OpenStack 架构深度解析——从组件协作到虚拟机创建全流程</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+  
+  
+    <article id="comments" lazyload>
+      
+    <div id="giscus" class="giscus"></div>
+    <script type="text/javascript">
+      Fluid.utils.loadComments('#giscus', function() {
+        var options = {"repo":"Zhb816/zhb816.github.io","repo-id":"R_kgDOOUCvVA","category":"General","category-id":"DIC_kwDOOUCvVM4DE2t4","theme-light":"light","theme-dark":"dark","mapping":"pathname","reactions-enabled":"1","emit-metadata":"0","input-position":"bottom","lang":"zh-CN","theme":"preferred_color_scheme","crossorigin":"anonymous"};
+        var attributes = {};
+        for (let option in options) {
+          if (!option.startsWith('theme-')) {
+            var key = option.startsWith('data-') ? option : 'data-' + option;
+            attributes[key] = options[option];
+          }
+        }
+        var light = 'light';
+        var dark = 'dark';
+        window.GiscusThemeLight = light;
+        window.GiscusThemeDark = dark;
+        attributes['data-theme'] = document.documentElement.getAttribute('data-user-color-scheme') === 'dark' ? dark : light;
+        for (let attribute in attributes) {
+          var value = attributes[attribute];
+          if (value === undefined || value === null || value === '') {
+            delete attributes[attribute];
+          }
+        }
+        var s = document.createElement('script');
+        s.setAttribute('src', 'https://giscus.app/client.js');
+        s.setAttribute('crossorigin', 'anonymous');
+        for (let attribute in attributes) {
+          s.setAttribute(attribute, attributes[attribute]);
+        }
+        var ss = document.getElementsByTagName('script');
+        var e = ss.length > 0 ? ss[ss.length - 1] : document.head || document.documentElement;
+        e.parentNode.insertBefore(s, e.nextSibling);
+      });
+    </script>
+    <noscript>Please enable JavaScript to view the comments</noscript>
+
+
+    </article>
+  
+
+
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+    <div class="statistics">
+  
+  
+
+  
+    
+      <span id="busuanzi_container_site_pv" style="display: none">
+        总访问量 
+        <span id="busuanzi_value_site_pv"></span>
+         次
+      </span>
+    
+    
+      <span id="busuanzi_container_site_uv" style="display: none">
+        总访客数 
+        <span id="busuanzi_value_site_uv"></span>
+         人
+      </span>
+    
+    
+
+  
+
+</div>
+
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+  <script defer src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

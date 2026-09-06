@@ -1,0 +1,1323 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="Kubernetes 调度器（kube-scheduler）是 K8s 的核心组件之一，负责决定每个 Pod 跑在哪个节点上。很多人用 K8s 很久，只知道 Pod 会被自动调度到节点上，但调度器到底怎么选的节点？为什么有的 Pod 一直 Pending？亲和性、污点、优先级这些东西到底怎么工作的？这篇文章把 kube-scheduler 的内部机制彻底讲清楚。 一、调度器是什么kube-sche">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Kubernetes 调度器深度解析——从 Filter 到 Score 的全链路与调优">
+<meta property="og:url" content="https://zhb816.github.io/2026/09/05/kubernetes-scheduler-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="Kubernetes 调度器（kube-scheduler）是 K8s 的核心组件之一，负责决定每个 Pod 跑在哪个节点上。很多人用 K8s 很久，只知道 Pod 会被自动调度到节点上，但调度器到底怎么选的节点？为什么有的 Pod 一直 Pending？亲和性、污点、优先级这些东西到底怎么工作的？这篇文章把 kube-scheduler 的内部机制彻底讲清楚。 一、调度器是什么kube-sche">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-09-05T07:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-06T06:03:01.447Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="Kubernetes">
+<meta property="article:tag" content="kube-scheduler">
+<meta property="article:tag" content="亲和性">
+<meta property="article:tag" content="优先级抢占">
+<meta property="article:tag" content="污点容忍">
+<meta property="article:tag" content="调度">
+<meta property="article:tag" content="调度框架">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+    <meta name="referrer" content="no-referrer-when-downgrade">
+  
+  
+  <title>Kubernetes 调度器深度解析——从 Filter 到 Score 的全链路与调优 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="Kubernetes 调度器深度解析——从 Filter 到 Score 的全链路与调优"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-09-05 15:00" pubdate>
+          2026年9月5日 下午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          10k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          88 分钟
+        
+      </span>
+    
+
+    
+    
+      
+        <span id="busuanzi_container_page_pv" style="display: none">
+          <i class="iconfont icon-eye" aria-hidden="true"></i>
+          <span id="busuanzi_value_page_pv"></span> 次
+        </span>
+        
+
+      
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">Kubernetes 调度器深度解析——从 Filter 到 Score 的全链路与调优</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>Kubernetes 调度器（kube-scheduler）是 K8s 的核心组件之一，负责决定每个 Pod 跑在哪个节点上。很多人用 K8s 很久，只知道 Pod 会被自动调度到节点上，但调度器到底怎么选的节点？为什么有的 Pod 一直 Pending？亲和性、污点、优先级这些东西到底怎么工作的？这篇文章把 kube-scheduler 的内部机制彻底讲清楚。</p>
+<h2 id="一、调度器是什么"><a href="#一、调度器是什么" class="headerlink" title="一、调度器是什么"></a>一、调度器是什么</h2><p>kube-scheduler 是 K8s 控制面的组件之一，运行在 master 节点上。它的核心职责就一个：<strong>监听新创建的、还没有分配节点的 Pod，为它们选择一个最合适的节点运行</strong>。</p>
+<p>调度器不负责启动 Pod——它只是在 Pod 的 spec.nodeName 字段上填上选中的节点名，然后 kubelet 发现有 Pod 被调度到自己节点上，才负责拉取镜像、启动容器。</p>
+<p>调度器的设计原则：</p>
+<ul>
+<li><strong>可插拔</strong>：调度逻辑由一系列插件组成，可以自定义启用哪些插件、插件的顺序</li>
+<li><strong>可扩展</strong>：通过调度框架（Scheduling Framework）可以编写自定义插件，不需要改调度器源码</li>
+<li><strong>高性能</strong>：支持大规模集群（数千节点），调度延迟在毫秒级</li>
+<li><strong>公平性</strong>：多租户、多队列调度，避免某个用户的 Pod 占满所有资源</li>
+</ul>
+<h2 id="二、调度流程总览"><a href="#二、调度流程总览" class="headerlink" title="二、调度流程总览"></a>二、调度流程总览</h2><p>kube-scheduler 的调度流程分三个大阶段：</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><code class="hljs dart"><span class="hljs-title class_">Pod</span>进入调度队列<br>      │<br>      ▼<br>┌─────────────┐<br>│  调度周期    │<br>│ <span class="hljs-title class_">Scheduling</span>  │<br>│   <span class="hljs-title class_">Cycle</span>     │<br>└──────┬──────┘<br>       │<br>       ├─ <span class="hljs-number">1</span>. <span class="hljs-title class_">PreFilter</span>（前置过滤）<br>       ├─ <span class="hljs-number">2</span>. <span class="hljs-title class_">Filter</span>（过滤节点）<br>       ├─ <span class="hljs-number">3</span>. <span class="hljs-title class_">PostFilter</span>（后置过滤，含抢占）<br>       ├─ <span class="hljs-number">4</span>. <span class="hljs-title class_">PreScore</span>（前置打分）<br>       ├─ <span class="hljs-number">5</span>. <span class="hljs-title class_">Score</span>（打分排序）<br>       ├─ <span class="hljs-number">6</span>. <span class="hljs-title class_">Reserve</span>（预留资源）<br>       ├─ <span class="hljs-number">7</span>. <span class="hljs-title class_">Permit</span>（批准）<br>       └─ <span class="hljs-number">8</span>. 选中节点，绑定<br>              │<br>              ▼<br>┌─────────────┐<br>│  绑定周期    │<br>│ <span class="hljs-title class_">Binding</span>     │<br>│   <span class="hljs-title class_">Cycle</span>     │<br>└──────┬──────┘<br>       ├─ <span class="hljs-number">9</span>. <span class="hljs-title class_">WaitOnPermit</span>（等待批准）<br>       ├─ <span class="hljs-number">10</span>. <span class="hljs-title class_">PreBind</span>（前置绑定）<br>       ├─ <span class="hljs-number">11</span>. <span class="hljs-title class_">Bind</span>（绑定节点）<br>       └─ <span class="hljs-number">12</span>. <span class="hljs-title class_">PostBind</span>（后置绑定）<br></code></pre></td></tr></table></figure>
+
+<p>简单来说就是两步：</p>
+<ol>
+<li><strong>调度周期（Scheduling Cycle）</strong>：从所有节点中选出最合适的一个</li>
+<li><strong>绑定周期（Binding Cycle）</strong>：把 Pod 绑定到选中的节点上</li>
+</ol>
+<p>调度周期是串行的（同一时间只有一个 Pod 在做调度决策），绑定周期是并行的（多个 Pod 可以同时绑定）。这样设计是为了保证调度决策的一致性，同时提高绑定的吞吐量。</p>
+<p>下面逐个阶段详解。</p>
+<h2 id="三、调度队列"><a href="#三、调度队列" class="headerlink" title="三、调度队列"></a>三、调度队列</h2><p>在进入调度流程之前，Pod 先进入调度队列。调度队列不是简单的 FIFO，而是一个优先级队列。</p>
+<h3 id="3-1-队列结构"><a href="#3-1-队列结构" class="headerlink" title="3.1 队列结构"></a>3.1 队列结构</h3><p>调度队列有三个子队列：</p>
+<ul>
+<li><strong>ActiveQ（活跃队列）</strong>：等待调度的 Pod，按优先级排序。调度器每次从这里取 Pod 调度</li>
+<li><strong>BackoffQ（退避队列）</strong>：调度失败的 Pod 会进入这里，等待一段时间后再重试。退避时间指数增长（1s → 2s → 4s …，上限 10s），避免频繁重试浪费资源</li>
+<li><strong>UnschedulableQ（不可调度队列）</strong>：确定无法调度的 Pod（比如所有节点都不满足条件），放在这里。当集群状态变化时（新节点加入、节点资源释放、其他 Pod 删除），这些 Pod 会被重新移回 ActiveQ 重试</li>
+</ul>
+<h3 id="3-2-优先级排序"><a href="#3-2-优先级排序" class="headerlink" title="3.2 优先级排序"></a>3.2 优先级排序</h3><p>ActiveQ 里的 Pod 按优先级排序：</p>
+<ol>
+<li>先按 Pod 的 priorityClassName 对应的优先级数值排序，高优先级在前</li>
+<li>优先级相同的，按 Pod 创建时间排序，先创建的在前</li>
+</ol>
+<p>这样保证高优先级的 Pod 先被调度。如果集群资源紧张，高优先级 Pod 可以抢占低优先级 Pod 的资源（后面讲抢占）。</p>
+<h3 id="3-3-事件驱动"><a href="#3-3-事件驱动" class="headerlink" title="3.3 事件驱动"></a>3.3 事件驱动</h3><p>调度器不是轮询队列，而是事件驱动的：</p>
+<ul>
+<li>有新 Pod 创建 → 加入 ActiveQ，触发调度</li>
+<li>有节点状态变化 → 触发 UnschedulableQ 里的 Pod 重试</li>
+<li>有 Pod 删除 → 触发 UnschedulableQ 里的 Pod 重试</li>
+<li>有 PV&#x2F;PVC 变化 → 触发相关 Pod 重试</li>
+</ul>
+<p>这样设计比轮询高效，而且响应快。</p>
+<h2 id="四、PreFilter——前置过滤"><a href="#四、PreFilter——前置过滤" class="headerlink" title="四、PreFilter——前置过滤"></a>四、PreFilter——前置过滤</h2><p>PreFilter 是调度流程的第一步，做一些预处理工作，为后续的 Filter 阶段准备数据。</p>
+<p>PreFilter 阶段的插件：</p>
+<ul>
+<li><strong>NodeResourcesFit</strong>：计算 Pod 请求的资源总量，为后续节点资源过滤做准备</li>
+<li><strong>NodePorts</strong>：检查 Pod 需要的 HostPort，为后续端口冲突检查做准备</li>
+<li><strong>PodTopologySpread</strong>：计算拓扑分布约束，为后续分布检查做准备</li>
+<li><strong>InterPodAffinity</strong>：计算 Pod 亲和性&#x2F;反亲和性的匹配项，为后续亲和性检查做准备</li>
+<li><strong>VolumeBinding</strong>：检查 PVC 的状态，为后续存储绑定做准备</li>
+</ul>
+<p>PreFilter 的作用是把一些可以提前计算的东西先算好，避免在每个节点上重复计算，提高性能。如果 PreFilter 阶段发现 Pod 肯定无法调度（比如请求的资源超过任何节点的最大容量），可以直接拒绝，不进入后续阶段。</p>
+<h2 id="五、Filter——过滤节点"><a href="#五、Filter——过滤节点" class="headerlink" title="五、Filter——过滤节点"></a>五、Filter——过滤节点</h2><p>Filter 是调度流程的核心阶段之一，从所有节点中过滤掉不满足 Pod 运行条件的节点。</p>
+<p>Filter 阶段会对每个节点依次运行一系列过滤插件，只要有一个插件认为这个节点不满足条件，这个节点就被淘汰。所有插件都通过的节点才进入下一个阶段。</p>
+<h3 id="5-1-核心过滤插件"><a href="#5-1-核心过滤插件" class="headerlink" title="5.1 核心过滤插件"></a>5.1 核心过滤插件</h3><p><strong>1. NodeUnschedulable（节点不可调度）</strong></p>
+<ul>
+<li>检查节点的 spec.unschedulable 是否为 true</li>
+<li>如果节点被标记为不可调度（比如 cordon 操作），过滤掉</li>
+<li>但如果 Pod 有容忍（toleration）对应 node.kubernetes.io&#x2F;unschedulable 污点，可以通过</li>
+</ul>
+<p><strong>2. NodeName（节点名指定）</strong></p>
+<ul>
+<li>如果 Pod 的 spec.nodeName 指定了节点名，只有那个节点能通过</li>
+<li>其他节点全部过滤掉</li>
+</ul>
+<p><strong>3. NodeResourcesFit（节点资源匹配）</strong></p>
+<ul>
+<li>检查节点的可分配资源（Allocatable）是否满足 Pod 的资源请求（Requests）</li>
+<li>包括 CPU、内存、临时存储、扩展资源（如 GPU、SR-IOV）</li>
+<li>计算方式：节点已分配资源 + Pod 请求资源 &lt;&#x3D; 节点可分配资源</li>
+<li>已分配资源 &#x3D; 节点上所有 Pod 的 Requests 之和（不是实际使用量，是请求量）</li>
+<li>这是最常用的过滤插件，大多数 Pending 的 Pod 都是因为这个过滤掉的</li>
+</ul>
+<p><strong>4. NodeAffinity（节点亲和性）</strong></p>
+<ul>
+<li>检查 Pod 的 spec.affinity.nodeAffinity 是否满足</li>
+<li>requiredDuringSchedulingIgnoredDuringExecution（硬约束）：必须满足，不满足就过滤</li>
+<li>preferredDuringSchedulingIgnoredDuringExecution（软约束）：不强制，在 Score 阶段加权</li>
+<li>匹配规则：节点的 label 是否匹配 key&#x2F;operator&#x2F;values</li>
+<li>operator 支持：In、NotIn、Exists、DoesNotExist、Gt、Lt</li>
+</ul>
+<p><strong>5. TaintToleration（污点容忍）</strong></p>
+<ul>
+<li>检查节点上的污点（Taint），Pod 是否有对应的容忍（Toleration）</li>
+<li>节点有污点，Pod 没有对应容忍 → 过滤掉</li>
+<li>污点的 effect：<ul>
+<li>NoSchedule：不允许调度（硬约束）</li>
+<li>PreferNoSchedule：尽量不调度（软约束，Score 阶段处理）</li>
+<li>NoExecute：不允许调度，且已经在节点上的 Pod 如果没有容忍会被驱逐</li>
+</ul>
+</li>
+<li>容忍的匹配：key、value、effect 都要匹配（或 key 为空匹配所有，effect 为空匹配所有 effect）</li>
+</ul>
+<p><strong>6. PodAffinity（Pod 亲和性）</strong></p>
+<ul>
+<li>检查 Pod 和已运行 Pod 的亲和性关系</li>
+<li>requiredDuringSchedulingIgnoredDuringExecution（硬约束）：必须和某些 Pod 在同一个拓扑域</li>
+<li>拓扑域由 topologyKey 定义，比如 kubernetes.io&#x2F;hostname（同一节点）、topology.kubernetes.io&#x2F;zone（同一可用区）</li>
+<li>匹配规则：命名空间 + label selector 匹配已运行的 Pod</li>
+<li>比如：”这个 Pod 必须和 app&#x3D;web 的 Pod 在同一个可用区”</li>
+</ul>
+<p><strong>7. PodAntiAffinity（Pod 反亲和性）</strong></p>
+<ul>
+<li>和 PodAffinity 相反，要求 Pod 不能和某些 Pod 在同一个拓扑域</li>
+<li>比如：”这个 Pod 不能和 app&#x3D;db 的 Pod 在同一个节点”（避免单点故障）</li>
+<li>硬约束不满足就过滤，软约束在 Score 阶段加权</li>
+</ul>
+<p><strong>8. NodePorts（节点端口）</strong></p>
+<ul>
+<li>检查 Pod 需要的 HostPort 是否和节点上已占用的端口冲突</li>
+<li>如果 Pod 声明了 hostPort，节点上该端口已被其他 Pod 占用 → 过滤</li>
+</ul>
+<p><strong>9. VolumeBinding（存储卷绑定）</strong></p>
+<ul>
+<li>检查 Pod 引用的 PVC 能否在节点上使用</li>
+<li>如果 PVC 已经绑定了 PV，检查 PV 的节点亲和性是否满足（比如云盘只能在特定可用区使用）</li>
+<li>如果 PVC 还没绑定（WaitForFirstConsumer 模式），检查 StorageClass 能否在该节点上创建 PV</li>
+<li>这就是为什么 StorageClass 推荐用 WaitForFirstConsumer——等 Pod 调度到节点后再创建 PV，避免 PV 创建在 Pod 无法访问的可用区</li>
+</ul>
+<p><strong>10. VolumeZone（存储卷可用区）</strong></p>
+<ul>
+<li>检查 PV 的可用区标签是否和节点的可用区匹配</li>
+<li>比如 AWS EBS 卷在 us-east-1a，就只能挂载到 us-east-1a 的节点上</li>
+</ul>
+<p><strong>11. VolumeLimits（存储卷数量限制）</strong></p>
+<ul>
+<li>检查节点上已挂载的卷数量是否达到上限</li>
+<li>不同存储类型有不同的卷数量限制（比如 AWS EBS 每个节点最多 25 个卷）</li>
+</ul>
+<p><strong>12. PodTopologySpread（Pod 拓扑分布约束）</strong></p>
+<ul>
+<li>检查 Pod 的拓扑分布约束是否满足</li>
+<li>控制 Pod 在拓扑域（节点、可用区、机架）中的分布均匀性</li>
+<li>maxSkew 参数控制分布不均匀的最大偏差</li>
+<li>whenUnsatisfiable：DoNotSchedule（硬约束，不满足就过滤）或 ScheduleAnyway（软约束，Score 阶段加权）</li>
+</ul>
+<h3 id="5-2-Filter-阶段的性能优化"><a href="#5-2-Filter-阶段的性能优化" class="headerlink" title="5.2 Filter 阶段的性能优化"></a>5.2 Filter 阶段的性能优化</h3><p>Filter 阶段要对每个节点跑所有插件，节点多了会慢。调度器做了很多优化：</p>
+<ul>
+<li><strong>并行过滤</strong>：多个节点的过滤并行执行</li>
+<li><strong>短路</strong>：一个插件失败就跳过后续插件</li>
+<li><strong>预计算</strong>：PreFilter 阶段提前算好公共数据</li>
+<li><strong>缓存</strong>：节点信息、Pod 信息都有缓存，不需要每次都查 API Server</li>
+<li><strong>增量更新</strong>：节点或 Pod 变化时只更新受影响的部分</li>
+</ul>
+<p>大规模集群（5000+ 节点）下，Filter 阶段仍然能在几十毫秒内完成。</p>
+<h2 id="六、PostFilter——后置过滤与抢占"><a href="#六、PostFilter——后置过滤与抢占" class="headerlink" title="六、PostFilter——后置过滤与抢占"></a>六、PostFilter——后置过滤与抢占</h2><p>Filter 阶段结束后，如果没有任何节点通过过滤（所有节点都不满足条件），就进入 PostFilter 阶段。</p>
+<p>PostFilter 阶段的核心是<strong>抢占（Preemption）</strong>：如果 Pod 优先级高，且集群中有低优先级 Pod 占用了资源，调度器可以尝试驱逐（删除）低优先级的 Pod，腾出资源给高优先级 Pod。</p>
+<h3 id="6-1-抢占的条件"><a href="#6-1-抢占的条件" class="headerlink" title="6.1 抢占的条件"></a>6.1 抢占的条件</h3><p>抢占不是随便发生的，需要满足：</p>
+<ol>
+<li>Pod 有优先级（priorityClassName 不为空，且优先级数值 &gt; 0）</li>
+<li>Filter 阶段所有节点都不满足</li>
+<li>存在至少一个节点，驱逐该节点上某些低优先级 Pod 后，能满足当前 Pod 的运行条件</li>
+<li>当前 Pod 的优先级高于被驱逐 Pod 的优先级</li>
+<li>被驱逐的 Pod 没有保护机制（如 PodDisruptionBudget 不允许驱逐）</li>
+</ol>
+<h3 id="6-2-抢占的过程"><a href="#6-2-抢占的过程" class="headerlink" title="6.2 抢占的过程"></a>6.2 抢占的过程</h3><ol>
+<li>调度器遍历所有节点，模拟驱逐节点上优先级低于当前 Pod 的 Pod</li>
+<li>对每个节点，计算需要驱逐哪些 Pod、驱逐后能否满足当前 Pod</li>
+<li>选出”代价最小”的节点：<ul>
+<li>优先驱逐最少数量的 Pod</li>
+<li>优先驱逐优先级最低的 Pod</li>
+<li>优先驱逐高优先级 Pod 数量最少的节点</li>
+</ul>
+</li>
+<li>选中节点后，调度器通过 API Server 删除被选中的低优先级 Pod</li>
+<li>Pod 被删除后，资源释放，当前 Pod 在下一个调度周期被调度到该节点</li>
+<li>被驱逐的 Pod 会重新进入调度队列，等待其他节点资源释放</li>
+</ol>
+<h3 id="6-3-抢占的注意事项"><a href="#6-3-抢占的注意事项" class="headerlink" title="6.3 抢占的注意事项"></a>6.3 抢占的注意事项</h3><ul>
+<li>抢占只删除 Pod，不保证被驱逐的 Pod 能在其他节点运行——它们可能也 Pending</li>
+<li>抢占是”优雅驱逐”，给 Pod 留 terminationGracePeriodSeconds 的时间清理</li>
+<li>PodDisruptionBudget（PDB）可以保护 Pod 不被抢占——如果驱逐会导致 PDB 不满足，就不驱逐</li>
+<li>优先级为 0 或负数的 Pod 不能抢占其他 Pod</li>
+<li>系统关键 Pod（如 kube-proxy、CNI 插件）有很高的优先级，不会被抢占</li>
+</ul>
+<h2 id="七、PreScore-和-Score——打分排序"><a href="#七、PreScore-和-Score——打分排序" class="headerlink" title="七、PreScore 和 Score——打分排序"></a>七、PreScore 和 Score——打分排序</h2><p>Filter 阶段过滤后，如果有多个节点都满足条件，就需要打分选出最优的一个。</p>
+<p>PreScore 阶段做打分前的预处理，和 PreFilter 类似，提前算好公共数据。</p>
+<p>Score 阶段对每个通过 Filter 的节点运行一系列打分插件，每个插件给节点打一个 0-100 的分数（0 最差，100 最好）。最终分数是所有插件分数的加权和。</p>
+<h3 id="7-1-核心打分插件"><a href="#7-1-核心打分插件" class="headerlink" title="7.1 核心打分插件"></a>7.1 核心打分插件</h3><p><strong>1. NodeResourcesBalancedAllocation（节点资源均衡分配）</strong></p>
+<ul>
+<li>倾向于选择资源使用更均衡的节点</li>
+<li>计算 CPU 和内存的使用率，两者越接近（均衡），分数越高</li>
+<li>避免节点 CPU 用了 90% 但内存只用了 10% 这种不均衡的情况</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>2. NodeResourcesFit（节点资源匹配）</strong></p>
+<ul>
+<li>倾向于选择剩余资源更合适的节点</li>
+<li>有两种打分策略：<ul>
+<li>LeastAllocated（默认）：剩余资源越多的节点分数越高（负载均衡，把 Pod 分散到各个节点）</li>
+<li>MostAllocated：剩余资源越少的节点分数越高（装箱，把 Pod 集中到少数节点，节省节点）</li>
+</ul>
+</li>
+<li>可以通过调度器配置选择策略</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>3. NodeAffinity（节点亲和性）</strong></p>
+<ul>
+<li>对 preferredDuringSchedulingIgnoredDuringExecution 的软约束打分</li>
+<li>满足的偏好越多，分数越高</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>4. TaintToleration（污点容忍）</strong></p>
+<ul>
+<li>对 PreferNoSchedule 污点打分</li>
+<li>节点上没有 PreferNoSchedule 污点，或 Pod 有对应容忍，分数高</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>5. PodAffinity &#x2F; PodAntiAffinity（Pod 亲和&#x2F;反亲和）</strong></p>
+<ul>
+<li>对 preferred 的软约束打分</li>
+<li>满足亲和性的节点分数高，满足反亲和性的节点分数高</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>6. PodTopologySpread（Pod 拓扑分布）</strong></p>
+<ul>
+<li>对 whenUnsatisfiable&#x3D;ScheduleAnyway 的软约束打分</li>
+<li>分布更均匀的拓扑域分数高</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>7. ImageLocality（镜像本地性）</strong></p>
+<ul>
+<li>倾向于选择已经有 Pod 需要的镜像的节点</li>
+<li>节点上已有的镜像越大、数量越多，分数越高</li>
+<li>避免拉取大镜像的开销</li>
+<li>权重默认 1</li>
+</ul>
+<p><strong>8. VolumeBinding（存储卷绑定）</strong></p>
+<ul>
+<li>倾向于选择已经有绑定 PV 的节点，或需要创建更少新 PV 的节点</li>
+<li>权重默认 1</li>
+</ul>
+<h3 id="7-2-打分的加权机制"><a href="#7-2-打分的加权机制" class="headerlink" title="7.2 打分的加权机制"></a>7.2 打分的加权机制</h3><p>每个插件有一个权重（weight），最终分数 &#x3D; Σ(插件分数 × 插件权重) &#x2F; Σ(权重)。</p>
+<p>权重可以在调度器配置里调整。比如想让资源均衡更重要，可以把 NodeResourcesBalancedAllocation 的权重调大。</p>
+<p>默认配置下，大多数插件权重都是 1，公平竞争。生产环境可以根据业务特点调整权重，比如：</p>
+<ul>
+<li>数据库集群：提高 PodAntiAffinity 权重，让 Pod 分散到不同节点</li>
+<li>批处理任务：提高 NodeResourcesFit(MostAllocated) 权重，集中装箱节省节点</li>
+<li>多可用区部署：提高 PodTopologySpread 权重，保证跨可用区均匀分布</li>
+</ul>
+<h3 id="7-3-打分后的节点选择"><a href="#7-3-打分后的节点选择" class="headerlink" title="7.3 打分后的节点选择"></a>7.3 打分后的节点选择</h3><p>所有节点打分完成后，分数最高的节点被选中。如果有多个节点分数相同（并列第一），随机选一个（实际上是按节点名排序后选第一个，但效果是随机的）。</p>
+<p>选中节点后，进入 Reserve 阶段。</p>
+<h2 id="八、Reserve——预留资源"><a href="#八、Reserve——预留资源" class="headerlink" title="八、Reserve——预留资源"></a>八、Reserve——预留资源</h2><p>Reserve 阶段把选中节点上的资源”预留”给当前 Pod，避免后续调度的 Pod 把这些资源抢走。</p>
+<p>具体操作：</p>
+<ol>
+<li>在调度器内部的缓存中，把当前 Pod 的资源请求加到选中节点的已分配资源中</li>
+<li>把 Pod 标记为”已预留”状态，关联到选中的节点</li>
+<li>后续调度其他 Pod 时，Filter 阶段的 NodeResourcesFit 会把这些预留资源算进去</li>
+</ol>
+<p>Reserve 是在调度器内存中操作的，不涉及 API Server，所以很快。如果后续绑定失败，会调用 Unreserve 把预留的资源还回去。</p>
+<p>Reserve 阶段的插件：</p>
+<ul>
+<li>主要是 VolumeBinding 插件，把 PVC 标记为”预绑定”到该节点的 PV</li>
+<li>其他插件一般不需要在 Reserve 阶段做什么</li>
+</ul>
+<h2 id="九、Permit——批准"><a href="#九、Permit——批准" class="headerlink" title="九、Permit——批准"></a>九、Permit——批准</h2><p>Permit 阶段是调度周期的最后一步，决定是否批准这个 Pod 进入绑定阶段。</p>
+<p>Permit 插件可以：</p>
+<ul>
+<li><strong>批准（Approve）</strong>：允许 Pod 进入绑定阶段</li>
+<li><strong>拒绝（Deny）</strong>：拒绝 Pod，回到调度队列重试</li>
+<li><strong>等待（Wait）</strong>：让 Pod 等待一段时间，期间可以被其他事件唤醒</li>
+</ul>
+<p>Permit 的典型用途是<strong>批调度（Coscheduling）</strong>：一组 Pod 要么全部调度成功，要么都不调度。比如机器学习训练任务，需要 N 个 Worker Pod 同时运行，少一个都不行。Permit 插件可以让先调度成功的 Pod 等待，直到所有 Pod 都调度成功后再统一批准进入绑定。如果有 Pod 调度失败，等待的 Pod 全部拒绝，避免资源浪费。</p>
+<p>默认配置下没有启用 Permit 插件，所有 Pod 直接批准。</p>
+<h2 id="十、绑定周期"><a href="#十、绑定周期" class="headerlink" title="十、绑定周期"></a>十、绑定周期</h2><p>调度周期完成后，Pod 进入绑定周期。绑定周期是并行执行的，多个 Pod 可以同时绑定。</p>
+<h3 id="10-1-WaitOnPermit——等待批准"><a href="#10-1-WaitOnPermit——等待批准" class="headerlink" title="10.1 WaitOnPermit——等待批准"></a>10.1 WaitOnPermit——等待批准</h3><p>如果 Pod 在 Permit 阶段被设置为 Wait 状态，在这里等待批准。批准后继续后续步骤。</p>
+<h3 id="10-2-PreBind——前置绑定"><a href="#10-2-PreBind——前置绑定" class="headerlink" title="10.2 PreBind——前置绑定"></a>10.2 PreBind——前置绑定</h3><p>PreBind 阶段做绑定前的准备工作：</p>
+<ul>
+<li><strong>VolumeBinding</strong>：把 PVC 真正绑定到 PV（如果是 WaitForFirstConsumer 模式，在这里创建 PV 并绑定）</li>
+<li>其他需要在绑定前完成的操作</li>
+</ul>
+<p>PreBind 失败的话，会 Unreserve 资源，Pod 回到调度队列重试。</p>
+<h3 id="10-3-Bind——绑定"><a href="#10-3-Bind——绑定" class="headerlink" title="10.3 Bind——绑定"></a>10.3 Bind——绑定</h3><p>Bind 是绑定周期的核心：调度器调用 API Server，把 Pod 的 spec.nodeName 设置为选中的节点名。</p>
+<p>这一步很简单，就是一个 API 调用。但它是原子的——API Server 会检查 Pod 是否还存在、是否已经被绑定到其他节点，避免竞态条件。</p>
+<p>绑定成功后，kubelet 会发现有 Pod 被调度到自己节点上，开始拉取镜像、启动容器。</p>
+<h3 id="10-4-PostBind——后置绑定"><a href="#10-4-PostBind——后置绑定" class="headerlink" title="10.4 PostBind——后置绑定"></a>10.4 PostBind——后置绑定</h3><p>PostBind 阶段做绑定后的清理工作：</p>
+<ul>
+<li>清理调度器内部的缓存状态</li>
+<li>记录调度指标和日志</li>
+<li>触发相关的事件</li>
+</ul>
+<p>PostBind 失败不影响绑定结果，因为 Pod 已经绑定成功了。</p>
+<h2 id="十一、调度框架与自定义插件"><a href="#十一、调度框架与自定义插件" class="headerlink" title="十一、调度框架与自定义插件"></a>十一、调度框架与自定义插件</h2><p>K8s 1.19 引入了调度框架（Scheduling Framework），把调度流程拆成了上面讲的这些扩展点（PreFilter、Filter、PostFilter、PreScore、Score、Reserve、Permit、PreBind、Bind、PostBind）。</p>
+<p>每个扩展点都是一个接口，用户可以编写自定义插件实现这些接口，然后在调度器配置里启用。自定义插件和内置插件完全平等，可以一起工作。</p>
+<h3 id="11-1-编写自定义插件的场景"><a href="#11-1-编写自定义插件的场景" class="headerlink" title="11.1 编写自定义插件的场景"></a>11.1 编写自定义插件的场景</h3><ul>
+<li><strong>网络感知调度</strong>：根据网络带宽、延迟选择节点</li>
+<li><strong>硬件感知调度</strong>：根据 NUMA 拓扑、PCIe 设备、GPU 拓扑选择节点</li>
+<li><strong>批调度</strong>：一组 Pod 同时调度</li>
+<li><strong>成本感知调度</strong>：根据云资源成本选择节点（优先用便宜的竞价实例）</li>
+<li><strong>业务规则调度</strong>：根据业务特定的规则选择节点</li>
+</ul>
+<h3 id="11-2-多调度器"><a href="#11-2-多调度器" class="headerlink" title="11.2 多调度器"></a>11.2 多调度器</h3><p>K8s 支持同时运行多个调度器，每个 Pod 可以通过 spec.schedulerName 指定用哪个调度器。比如：</p>
+<ul>
+<li>默认调度器：调度普通 Pod</li>
+<li>自定义调度器：调度机器学习任务（支持批调度、GPU 拓扑感知）</li>
+<li>第三方调度器：如 Volcano（批处理调度）、Yunikorn（大数据调度）</li>
+</ul>
+<p>多调度器之间通过 Pod 的 schedulerName 区分，互不干扰。</p>
+<h2 id="十二、常见调度问题排查"><a href="#十二、常见调度问题排查" class="headerlink" title="十二、常见调度问题排查"></a>十二、常见调度问题排查</h2><h3 id="12-1-Pod-一直-Pending"><a href="#12-1-Pod-一直-Pending" class="headerlink" title="12.1 Pod 一直 Pending"></a>12.1 Pod 一直 Pending</h3><p>Pod Pending 说明调度失败。排查步骤：</p>
+<ol>
+<li><p><strong>看 Pod 事件</strong>：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">kubectl describe pod &lt;pod-name&gt;<br></code></pre></td></tr></table></figure>
+<p>Events 里会有调度失败的原因，比如：</p>
+<ul>
+<li><code>0/3 nodes are available: 3 Insufficient cpu.</code> —— CPU 不够</li>
+<li><code>0/3 nodes are available: 3 node(s) didn&#39;t match node selector.</code> —— 节点选择器不匹配</li>
+<li><code>0/3 nodes are available: 3 node(s) had untolerated taint.</code> —— 污点不容忍</li>
+<li><code>0/3 nodes are available: 3 node(s) didn&#39;t find available persistent volumes.</code> —— 存储问题</li>
+</ul>
+</li>
+<li><p><strong>检查节点资源</strong>：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">kubectl describe nodes<br></code></pre></td></tr></table></figure>
+<p>看每个节点的 Allocated resources，CPU&#x2F;内存是否已经满了</p>
+</li>
+<li><p><strong>检查节点状态</strong>：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs bash">kubectl get nodes<br></code></pre></td></tr></table></figure>
+<p>节点是否 Ready，是否被 cordon（SchedulingDisabled）</p>
+</li>
+<li><p><strong>检查亲和性&#x2F;污点</strong>：</p>
+<ul>
+<li>Pod 的 nodeSelector、nodeAffinity 是否有匹配的节点</li>
+<li>节点上的污点，Pod 是否有对应容忍</li>
+</ul>
+</li>
+<li><p><strong>检查存储</strong>：</p>
+<ul>
+<li>PVC 是否 Bound</li>
+<li>PV 的节点亲和性是否匹配</li>
+<li>StorageClass 是否正常</li>
+</ul>
+</li>
+</ol>
+<h3 id="12-2-Pod-调度到了不合适的节点"><a href="#12-2-Pod-调度到了不合适的节点" class="headerlink" title="12.2 Pod 调度到了不合适的节点"></a>12.2 Pod 调度到了不合适的节点</h3><ul>
+<li>用 nodeAffinity 硬约束限制 Pod 只能在特定节点</li>
+<li>用 nodeAffinity 软约束引导 Pod 优先在某些节点</li>
+<li>用污点把特殊节点标记出来，只有有容忍的 Pod 才能调度</li>
+<li>用 PodTopologySpread 控制分布均匀性</li>
+<li>调整调度器打分插件的权重</li>
+</ul>
+<h3 id="12-3-调度慢"><a href="#12-3-调度慢" class="headerlink" title="12.3 调度慢"></a>12.3 调度慢</h3><ul>
+<li>集群规模大（几千节点）时，调度延迟会增加</li>
+<li>检查调度器的日志和指标（scheduling_duration_seconds）</li>
+<li>减少不必要的过滤插件和打分插件</li>
+<li>用节点分片（Node Sharding），多个调度器各管一部分节点</li>
+<li>升级 K8s 版本，新版本调度器性能持续优化</li>
+</ul>
+<h3 id="12-4-抢占不生效"><a href="#12-4-抢占不生效" class="headerlink" title="12.4 抢占不生效"></a>12.4 抢占不生效</h3><ul>
+<li>检查 Pod 的优先级是否真的高于被抢占的 Pod</li>
+<li>检查被抢占的 Pod 是否有 PDB 保护</li>
+<li>检查被抢占的 Pod 是否有 terminationGracePeriodSeconds 太长</li>
+<li>检查系统关键 Pod 的优先级（system-cluster-critical、system-node-critical）不会被抢占</li>
+<li>抢占只在 Filter 阶段所有节点都不满足时才触发，如果有节点满足条件，不会抢占</li>
+</ul>
+<h2 id="十三、生产环境调度最佳实践"><a href="#十三、生产环境调度最佳实践" class="headerlink" title="十三、生产环境调度最佳实践"></a>十三、生产环境调度最佳实践</h2><h3 id="13-1-资源规划"><a href="#13-1-资源规划" class="headerlink" title="13.1 资源规划"></a>13.1 资源规划</h3><ul>
+<li><strong>所有 Pod 都要设置 Requests 和 Limits</strong>：这是调度器做资源决策的基础。不设置 Requests 的 Pod 被认为不占资源，可能导致节点超卖</li>
+<li><strong>Requests 要合理</strong>：设太小会导致节点超卖、实际运行时 OOM；设太大会浪费资源、调度困难</li>
+<li><strong>用 LimitRange 设置默认值</strong>：命名空间级别设置默认的 Requests&#x2F;Limits，避免用户忘记设置</li>
+<li><strong>用 ResourceQuota 限制总量</strong>：命名空间级别限制总资源，避免一个团队占满集群</li>
+</ul>
+<h3 id="13-2-高可用调度"><a href="#13-2-高可用调度" class="headerlink" title="13.2 高可用调度"></a>13.2 高可用调度</h3><ul>
+<li><strong>用 PodAntiAffinity 把同一应用的 Pod 分散到不同节点</strong>：避免节点故障导致应用不可用</li>
+<li><strong>用 PodTopologySpread 跨可用区分布</strong>：多可用区集群里，保证 Pod 均匀分布在各个可用区</li>
+<li><strong>用 PDB 保护应用</strong>：设置 minAvailable 或 maxUnavailable，保证滚动更新和抢占时至少有一定数量的 Pod 可用</li>
+<li><strong>关键 Pod 设置高优先级</strong>：核心业务 Pod 用高优先级，避免被低优先级 Pod 挤占资源</li>
+</ul>
+<h3 id="13-3-节点管理"><a href="#13-3-节点管理" class="headerlink" title="13.3 节点管理"></a>13.3 节点管理</h3><ul>
+<li><strong>用污点标记特殊节点</strong>：GPU 节点、高内存节点、测试节点，打上污点，只有对应容忍的 Pod 才能调度</li>
+<li><strong>用节点标签做分组</strong>：按可用区、机型、用途打标签，配合 nodeAffinity 使用</li>
+<li><strong>维护前 cordon 节点</strong>：节点维护前先 cordon（标记不可调度），然后 drain（驱逐 Pod），避免维护期间有新 Pod 调度上来</li>
+<li><strong>监控节点资源使用率</strong>：CPU&#x2F;内存使用率超过 80% 时考虑扩容</li>
+</ul>
+<h3 id="13-4-存储调度"><a href="#13-4-存储调度" class="headerlink" title="13.4 存储调度"></a>13.4 存储调度</h3><ul>
+<li><strong>StorageClass 用 WaitForFirstConsumer</strong>：避免 PV 创建在 Pod 无法访问的可用区</li>
+<li><strong>重要数据用 ReclaimPolicy: Retain</strong>：防止误删 PVC 导致数据丢失</li>
+<li><strong>本地存储用 Local PV + nodeAffinity</strong>：Local PV 绑定到特定节点，配合 nodeAffinity 保证 Pod 调度到有数据的节点</li>
+</ul>
+<h2 id="十四、总结"><a href="#十四、总结" class="headerlink" title="十四、总结"></a>十四、总结</h2><p>kube-scheduler 的调度流程可以概括为：</p>
+<ol>
+<li><strong>入队</strong>：Pod 进入优先级调度队列，高优先级先调度</li>
+<li><strong>PreFilter</strong>：预处理，算好公共数据</li>
+<li><strong>Filter</strong>：从所有节点中过滤掉不满足条件的（资源、亲和性、污点、存储等）</li>
+<li><strong>PostFilter</strong>：如果没有节点满足，尝试抢占低优先级 Pod</li>
+<li><strong>Score</strong>：对满足条件的节点打分，加权求和选出最优</li>
+<li><strong>Reserve</strong>：在选中节点上预留资源</li>
+<li><strong>Permit</strong>：批准进入绑定阶段（支持批调度等待）</li>
+<li><strong>Bind</strong>：把 Pod 绑定到选中的节点</li>
+</ol>
+<p>理解了这个流程，遇到任何调度问题都能一步步定位：是 Filter 阶段被过滤了？还是 Score 阶段选了别的节点？还是抢占没生效？每一步都有对应的插件和日志可以查。</p>
+<p>调度器的强大之处在于它的可扩展性——通过调度框架可以编写自定义插件，满足各种特殊的调度需求。生产环境要做好资源规划、高可用调度、节点管理、存储调度这几件事，才能让集群稳定高效地运行。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/" class="category-chain-item">云计算</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/Kubernetes/" class="category-chain-item">Kubernetes</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/Kubernetes/" class="print-no-link">#Kubernetes</a>
+      
+        <a href="/tags/kube-scheduler/" class="print-no-link">#kube-scheduler</a>
+      
+        <a href="/tags/%E8%B0%83%E5%BA%A6/" class="print-no-link">#调度</a>
+      
+        <a href="/tags/%E4%BA%B2%E5%92%8C%E6%80%A7/" class="print-no-link">#亲和性</a>
+      
+        <a href="/tags/%E6%B1%A1%E7%82%B9%E5%AE%B9%E5%BF%8D/" class="print-no-link">#污点容忍</a>
+      
+        <a href="/tags/%E4%BC%98%E5%85%88%E7%BA%A7%E6%8A%A2%E5%8D%A0/" class="print-no-link">#优先级抢占</a>
+      
+        <a href="/tags/%E8%B0%83%E5%BA%A6%E6%A1%86%E6%9E%B6/" class="print-no-link">#调度框架</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>Kubernetes 调度器深度解析——从 Filter 到 Score 的全链路与调优</div>
+      <div>https://zhb816.github.io/2026/09/05/kubernetes-scheduler-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年9月5日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/09/05/hybrid-cloud-networking-deep-dive/" title="混合云网络架构深度解析——专线、VPN、云企业网与跨云互联">
+                        <span class="hidden-mobile">混合云网络架构深度解析——专线、VPN、云企业网与跨云互联</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+  
+  
+    <article id="comments" lazyload>
+      
+    <div id="giscus" class="giscus"></div>
+    <script type="text/javascript">
+      Fluid.utils.loadComments('#giscus', function() {
+        var options = {"repo":"Zhb816/zhb816.github.io","repo-id":"R_kgDOOUCvVA","category":"General","category-id":"DIC_kwDOOUCvVM4DE2t4","theme-light":"light","theme-dark":"dark","mapping":"pathname","reactions-enabled":"1","emit-metadata":"0","input-position":"bottom","lang":"zh-CN","theme":"preferred_color_scheme","crossorigin":"anonymous"};
+        var attributes = {};
+        for (let option in options) {
+          if (!option.startsWith('theme-')) {
+            var key = option.startsWith('data-') ? option : 'data-' + option;
+            attributes[key] = options[option];
+          }
+        }
+        var light = 'light';
+        var dark = 'dark';
+        window.GiscusThemeLight = light;
+        window.GiscusThemeDark = dark;
+        attributes['data-theme'] = document.documentElement.getAttribute('data-user-color-scheme') === 'dark' ? dark : light;
+        for (let attribute in attributes) {
+          var value = attributes[attribute];
+          if (value === undefined || value === null || value === '') {
+            delete attributes[attribute];
+          }
+        }
+        var s = document.createElement('script');
+        s.setAttribute('src', 'https://giscus.app/client.js');
+        s.setAttribute('crossorigin', 'anonymous');
+        for (let attribute in attributes) {
+          s.setAttribute(attribute, attributes[attribute]);
+        }
+        var ss = document.getElementsByTagName('script');
+        var e = ss.length > 0 ? ss[ss.length - 1] : document.head || document.documentElement;
+        e.parentNode.insertBefore(s, e.nextSibling);
+      });
+    </script>
+    <noscript>Please enable JavaScript to view the comments</noscript>
+
+
+    </article>
+  
+
+
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+    <div class="statistics">
+  
+  
+
+  
+    
+      <span id="busuanzi_container_site_pv" style="display: none">
+        总访问量 
+        <span id="busuanzi_value_site_pv"></span>
+         次
+      </span>
+    
+    
+      <span id="busuanzi_container_site_uv" style="display: none">
+        总访客数 
+        <span id="busuanzi_value_site_uv"></span>
+         人
+      </span>
+    
+    
+
+  
+
+</div>
+
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+  <script defer src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

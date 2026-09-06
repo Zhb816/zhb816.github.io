@@ -1,0 +1,1240 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="OpenStack 是目前最主流的开源云平台，很多企业的私有云、运营商的公有云都是基于 OpenStack 搭建的。但 OpenStack 组件多、架构复杂，很多人用了很久也搞不清各个组件之间的关系。这篇文章从核心组件讲起，再走一遍虚拟机创建的完整流程，把 OpenStack 的架构理清楚。 一、OpenStack 是什么OpenStack 是一个开源的云计算管理平台，提供 IaaS（基础设施即服">
+<meta property="og:type" content="article">
+<meta property="og:title" content="OpenStack 架构深度解析——从组件协作到虚拟机创建全流程">
+<meta property="og:url" content="https://zhb816.github.io/2026/09/03/openstack-architecture-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="OpenStack 是目前最主流的开源云平台，很多企业的私有云、运营商的公有云都是基于 OpenStack 搭建的。但 OpenStack 组件多、架构复杂，很多人用了很久也搞不清各个组件之间的关系。这篇文章从核心组件讲起，再走一遍虚拟机创建的完整流程，把 OpenStack 的架构理清楚。 一、OpenStack 是什么OpenStack 是一个开源的云计算管理平台，提供 IaaS（基础设施即服">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-09-03T06:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-06T05:56:07.881Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="Cinder">
+<meta property="article:tag" content="Glance">
+<meta property="article:tag" content="Keystone">
+<meta property="article:tag" content="Neutron">
+<meta property="article:tag" content="Nova">
+<meta property="article:tag" content="OpenStack">
+<meta property="article:tag" content="云平台">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+    <meta name="referrer" content="no-referrer-when-downgrade">
+  
+  
+  <title>OpenStack 架构深度解析——从组件协作到虚拟机创建全流程 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="OpenStack 架构深度解析——从组件协作到虚拟机创建全流程"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-09-03 14:00" pubdate>
+          2026年9月3日 下午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          8k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          67 分钟
+        
+      </span>
+    
+
+    
+    
+      
+        <span id="busuanzi_container_page_pv" style="display: none">
+          <i class="iconfont icon-eye" aria-hidden="true"></i>
+          <span id="busuanzi_value_page_pv"></span> 次
+        </span>
+        
+
+      
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">OpenStack 架构深度解析——从组件协作到虚拟机创建全流程</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>OpenStack 是目前最主流的开源云平台，很多企业的私有云、运营商的公有云都是基于 OpenStack 搭建的。但 OpenStack 组件多、架构复杂，很多人用了很久也搞不清各个组件之间的关系。这篇文章从核心组件讲起，再走一遍虚拟机创建的完整流程，把 OpenStack 的架构理清楚。</p>
+<h2 id="一、OpenStack-是什么"><a href="#一、OpenStack-是什么" class="headerlink" title="一、OpenStack 是什么"></a>一、OpenStack 是什么</h2><p>OpenStack 是一个开源的云计算管理平台，提供 IaaS（基础设施即服务）能力。它不是一个单一的软件，而是由多个独立的项目组成，每个项目负责云平台的一个方面（计算、网络、存储、身份认证等），通过 REST API 协作。</p>
+<p>OpenStack 的设计原则：</p>
+<ul>
+<li><strong>模块化</strong>：每个组件独立开发、独立部署，可以按需启用</li>
+<li><strong>REST API</strong>：所有组件都提供 REST API，组件之间通过 API 通信</li>
+<li><strong>消息队列</strong>：组件内部的不同服务之间通过消息队列（RabbitMQ&#x2F;Qpid）通信，实现异步解耦</li>
+<li><strong>数据库</strong>：每个组件有自己的数据库（MySQL&#x2F;PostgreSQL），存储状态信息</li>
+<li><strong>无状态服务</strong>：API 服务是无状态的，可以水平扩展，状态存在数据库和消息队列里</li>
+</ul>
+<h2 id="二、核心组件详解"><a href="#二、核心组件详解" class="headerlink" title="二、核心组件详解"></a>二、核心组件详解</h2><p>OpenStack 有几十个项目，但核心的就这几个：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>项目名</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Keystone</td>
+<td>身份认证服务</td>
+<td>统一认证、授权、服务目录</td>
+</tr>
+<tr>
+<td>Glance</td>
+<td>镜像服务</td>
+<td>虚拟机镜像的存储、注册、分发</td>
+</tr>
+<tr>
+<td>Nova</td>
+<td>计算服务</td>
+<td>虚拟机的生命周期管理</td>
+</tr>
+<tr>
+<td>Neutron</td>
+<td>网络服务</td>
+<td>虚拟网络、子网、路由、安全组、浮动IP</td>
+</tr>
+<tr>
+<td>Cinder</td>
+<td>块存储服务</td>
+<td>云硬盘（块存储卷）的创建、挂载、快照</td>
+</tr>
+<tr>
+<td>Swift</td>
+<td>对象存储服务</td>
+<td>对象存储，存镜像、备份、静态文件</td>
+</tr>
+<tr>
+<td>Horizon</td>
+<td>仪表盘</td>
+<td>Web 管理界面</td>
+</tr>
+</tbody></table>
+<p>下面逐个详解。</p>
+<h3 id="2-1-Keystone——身份认证服务"><a href="#2-1-Keystone——身份认证服务" class="headerlink" title="2.1 Keystone——身份认证服务"></a>2.1 Keystone——身份认证服务</h3><p>Keystone 是 OpenStack 的入口，所有其他组件都要通过 Keystone 做身份认证。它提供：</p>
+<ul>
+<li><strong>身份认证（Authentication）</strong>：验证用户是谁（用户名密码、Token、LDAP、联邦认证）</li>
+<li><strong>授权（Authorization）</strong>：验证用户能做什么（基于角色的访问控制 RBAC）</li>
+<li><strong>服务目录（Service Catalog）</strong>：记录所有 OpenStack 服务的 API 端点地址，用户通过服务目录找到各个服务的地址</li>
+<li><strong>项目&#x2F;租户（Project&#x2F;Tenant）</strong>：资源的隔离单位，用户可以属于多个项目，每个项目有独立的资源配额</li>
+</ul>
+<p>Keystone 的核心概念：</p>
+<ul>
+<li><strong>User（用户）</strong>：使用 OpenStack 的人或服务</li>
+<li><strong>Project（项目）</strong>：资源的容器，云主机、网络、存储都属于某个项目</li>
+<li><strong>Role（角色）</strong>：权限的集合，用户在某个项目里扮演某个角色</li>
+<li><strong>Token（令牌）</strong>：用户认证通过后获得的凭证，后续访问其他服务时携带 Token，不需要每次都输密码</li>
+<li><strong>Endpoint（端点）</strong>：每个服务的 API 访问地址，分 admin、internal、public 三种</li>
+</ul>
+<p>工作流程：</p>
+<ol>
+<li>用户用用户名密码向 Keystone 请求 Token</li>
+<li>Keystone 验证通过后，返回一个 Token + 服务目录（包含所有服务的 Endpoint）</li>
+<li>用户拿着 Token 去访问 Nova（创建虚拟机）</li>
+<li>Nova 收到请求后，拿着 Token 去 Keystone 验证：这个 Token 有效吗？这个用户有创建虚拟机的权限吗？</li>
+<li>Keystone 验证通过，Nova 才继续处理请求</li>
+</ol>
+<h3 id="2-2-Glance——镜像服务"><a href="#2-2-Glance——镜像服务" class="headerlink" title="2.2 Glance——镜像服务"></a>2.2 Glance——镜像服务</h3><p>Glance 负责虚拟机镜像的管理。镜像就是虚拟机的模板，包含了操作系统和预装软件，创建虚拟机时从镜像启动。</p>
+<p>Glance 提供：</p>
+<ul>
+<li>镜像的注册（记录镜像的元数据：名称、格式、大小、操作系统）</li>
+<li>镜像的存储（实际的镜像文件存在后端存储里，可以是 Swift、Ceph、本地文件系统、NFS）</li>
+<li>镜像的分发（创建虚拟机时，Nova 从 Glance 下载镜像）</li>
+</ul>
+<p>镜像格式：</p>
+<ul>
+<li><strong>raw</strong>：原始格式，不压缩，性能好，但占用空间大</li>
+<li><strong>qcow2</strong>：QEMU 写时复制格式，支持压缩、快照、加密，空间利用率高，OpenStack 最常用</li>
+<li><strong>iso</strong>：光盘镜像，用于安装操作系统</li>
+<li><strong>aki&#x2F;ari&#x2F;ami</strong>：Amazon 内核&#x2F;ramdisk&#x2F;镜像格式</li>
+</ul>
+<p>Glance 的后端存储可以配置多种，生产环境常用 Ceph 或 Swift。</p>
+<h3 id="2-3-Nova——计算服务"><a href="#2-3-Nova——计算服务" class="headerlink" title="2.3 Nova——计算服务"></a>2.3 Nova——计算服务</h3><p>Nova 是 OpenStack 的核心，负责虚拟机的全生命周期管理：创建、启动、停止、重启、挂起、恢复、迁移、销毁、调整规格、快照。</p>
+<p>Nova 不是一个单一的服务，而是由多个服务组成：</p>
+<ul>
+<li><strong>nova-api</strong>：接收和处理用户的 REST API 请求，做基本的校验，然后通过消息队列通知 nova-compute</li>
+<li><strong>nova-scheduler</strong>：调度器，决定虚拟机创建在哪个计算节点上。基于过滤（Filter）和加权（Weight）算法，从所有可用的计算节点中选出最合适的</li>
+<li><strong>nova-compute</strong>：运行在每个计算节点上，负责实际创建和管理虚拟机。通过调用 Hypervisor（KVM&#x2F;QEMU、VMware、Xen、Hyper-V）的 API 来操作虚拟机</li>
+<li><strong>nova-conductor</strong>：数据库代理，nova-compute 不直接访问数据库，而是通过 nova-conductor 访问，避免数据库连接过多和安全问题</li>
+<li><strong>nova-novncproxy</strong>：VNC 代理，让用户通过浏览器访问虚拟机的控制台</li>
+</ul>
+<p>Nova 创建虚拟机的大致流程：</p>
+<ol>
+<li>nova-api 收到创建请求，验证参数，写入数据库（状态为 BUILD）</li>
+<li>nova-api 通过消息队列通知 nova-scheduler</li>
+<li>nova-scheduler 执行调度算法，选出目标计算节点</li>
+<li>nova-scheduler 通过消息队列通知目标节点的 nova-compute</li>
+<li>nova-compute 从 Glance 下载镜像（如果本地没有缓存）</li>
+<li>nova-compute 调用 Neutron API 为虚拟机分配网络和端口</li>
+<li>nova-compute 调用 Cinder API 挂载系统盘（如果用卷启动）</li>
+<li>nova-compute 调用 libvirt API 创建并启动虚拟机</li>
+<li>虚拟机启动成功后，nova-compute 更新数据库状态为 ACTIVE</li>
+</ol>
+<h3 id="2-4-Neutron——网络服务"><a href="#2-4-Neutron——网络服务" class="headerlink" title="2.4 Neutron——网络服务"></a>2.4 Neutron——网络服务</h3><p>Neutron 负责 OpenStack 的虚拟网络，提供网络即服务（NaaS）能力。它是 OpenStack 里最复杂的组件之一。</p>
+<p>Neutron 的核心概念：</p>
+<ul>
+<li><strong>Network（网络）</strong>：一个二层广播域，类似 VLAN。可以是 VLAN、VXLAN、GRE、flat 等类型</li>
+<li><strong>Subnet（子网）</strong>：关联在 Network 上的三层网段，包含 CIDR、网关、DNS、DHCP 地址池</li>
+<li><strong>Port（端口）</strong>：虚拟机网卡在虚拟网络上的连接点，有 MAC 地址和 IP 地址</li>
+<li><strong>Router（路由器）</strong>：连接不同子网，实现三层转发。路由器有网关接口（连接外部网络）和内部接口（连接子网）</li>
+<li><strong>Floating IP（浮动IP）</strong>：公网 IP，绑定到虚拟机的端口上，实现外网访问虚拟机。通过 NAT 实现</li>
+<li><strong>Security Group（安全组）</strong>：虚拟机级别的防火墙，控制进出虚拟机的流量（基于 IP、端口、协议）</li>
+<li><strong>Provider Network（运营商网络）</strong>：直接映射到物理网络的虚拟网络，虚拟机直接获取物理网络的 IP</li>
+</ul>
+<p>Neutron 的架构也是分布式的：</p>
+<ul>
+<li><strong>neutron-server</strong>：API 服务，处理请求，操作数据库</li>
+<li><strong>neutron-openvswitch-agent</strong>：运行在计算节点和网络节点上，配置 Open vSwitch，实现虚拟网络的数据面</li>
+<li><strong>neutron-l3-agent</strong>：运行在网络节点上，实现虚拟路由器（网络命名空间 + iptables）</li>
+<li><strong>neutron-dhcp-agent</strong>：运行在网络节点上，为子网提供 DHCP 服务（dnsmasq）</li>
+<li><strong>neutron-metadata-agent</strong>：提供元数据服务，虚拟机可以通过 169.254.169.254 获取自己的元数据（类似 AWS 的 instance metadata）</li>
+</ul>
+<p>Neutron 的数据面实现：</p>
+<ul>
+<li><strong>ML2（Modular Layer 2）插件</strong>：Neutron 的核心插件，统一管理二层网络，支持多种网络类型驱动（VLAN、VXLAN、GRE、flat）和多种机制驱动（Open vSwitch、Linux Bridge、SR-IOV）</li>
+<li><strong>Open vSwitch</strong>：最常用的虚拟交换机，Neutron 通过 OVS 实现虚拟网络的数据转发</li>
+<li><strong>网络命名空间</strong>：每个虚拟路由器和 DHCP 服务都在独立的网络命名空间里，实现隔离</li>
+</ul>
+<h3 id="2-5-Cinder——块存储服务"><a href="#2-5-Cinder——块存储服务" class="headerlink" title="2.5 Cinder——块存储服务"></a>2.5 Cinder——块存储服务</h3><p>Cinder 提供云硬盘（块存储卷）服务，类似 AWS 的 EBS。云硬盘可以挂载到虚拟机上，作为数据盘使用，独立于虚拟机的生命周期。</p>
+<p>Cinder 的核心概念：</p>
+<ul>
+<li><strong>Volume（卷）</strong>：一块虚拟的块存储设备，可以挂载到虚拟机</li>
+<li><strong>Snapshot（快照）</strong>：卷的某个时间点的副本，可以用来恢复卷或创建新卷</li>
+<li><strong>Volume Type（卷类型）</strong>：卷的规格，定义了后端存储类型、QoS、额外特性（SSD、HDD、复制、加密）</li>
+<li><strong>Backup（备份）</strong>：卷的备份，存在对象存储（Swift）里，用于灾难恢复</li>
+</ul>
+<p>Cinder 的架构：</p>
+<ul>
+<li><strong>cinder-api</strong>：API 服务</li>
+<li><strong>cinder-scheduler</strong>：调度器，决定卷创建在哪个后端存储节点上</li>
+<li><strong>cinder-volume</strong>：运行在存储节点上，通过驱动（Driver）和后端存储通信，实际创建和管理卷</li>
+<li><strong>cinder-backup</strong>：备份服务，把卷备份到对象存储</li>
+</ul>
+<p>Cinder 支持大量的后端存储驱动：Ceph RBD、LVM、NFS、GlusterFS、华为存储、EMC、NetApp 等。生产环境最常用的是 Ceph RBD。</p>
+<h3 id="2-6-Swift——对象存储服务"><a href="#2-6-Swift——对象存储服务" class="headerlink" title="2.6 Swift——对象存储服务"></a>2.6 Swift——对象存储服务</h3><p>Swift 提供对象存储服务，类似 AWS 的 S3。对象存储是扁平的，没有目录结构，通过容器（Container）和对象（Object）来组织数据。</p>
+<p>Swift 的特点：</p>
+<ul>
+<li><strong>高可用</strong>：数据多副本存储（默认3副本），分布在不同的节点和磁盘上，节点故障不影响数据可用性</li>
+<li><strong>高可扩展</strong>：通过增加节点线性扩展容量和性能，没有单点</li>
+<li><strong>最终一致性</strong>：数据写入后，副本同步需要时间，短时间内可能读到旧数据（最终一致）</li>
+<li><strong>REST API</strong>：通过 HTTP REST API 访问，支持 GET&#x2F;PUT&#x2F;DELETE</li>
+</ul>
+<p>Swift 的架构：</p>
+<ul>
+<li><strong>Proxy Server</strong>：代理服务器，接收用户请求，路由到正确的存储节点</li>
+<li><strong>Account Server</strong>：账户服务器，管理账户信息</li>
+<li><strong>Container Server</strong>：容器服务器，管理容器信息</li>
+<li><strong>Object Server</strong>：对象服务器，实际存储对象数据</li>
+<li><strong>Consistency Engine</strong>：一致性引擎，包括 Auditor（审计数据完整性）、Replicator（复制副本）、Updater（更新索引）</li>
+</ul>
+<p>Swift 用 Ring（环）来决定数据存在哪个节点上。Ring 是一个一致性哈希环，把对象名映射到物理设备上。新增或移除节点时，只有少量数据需要迁移。</p>
+<h3 id="2-7-Horizon——仪表盘"><a href="#2-7-Horizon——仪表盘" class="headerlink" title="2.7 Horizon——仪表盘"></a>2.7 Horizon——仪表盘</h3><p>Horizon 是 OpenStack 的 Web 管理界面，基于 Django 开发。它把所有组件的 API 封装成可视化的操作界面，让用户不用记命令就能管理云资源。</p>
+<p>Horizon 分两个视图：</p>
+<ul>
+<li><strong>用户视图</strong>：普通用户管理自己的云主机、网络、存储</li>
+<li><strong>管理员视图</strong>：管理员管理所有项目、用户、配额、 hypervisor、实例迁移</li>
+</ul>
+<h2 id="三、虚拟机创建全流程"><a href="#三、虚拟机创建全流程" class="headerlink" title="三、虚拟机创建全流程"></a>三、虚拟机创建全流程</h2><p>理解了各个组件，现在走一遍创建虚拟机的完整流程，看看各个组件是怎么协作的。</p>
+<p>假设用户要创建一台虚拟机：2核4G、CentOS 7 镜像、默认网络、100G数据盘。</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><code class="hljs dart">用户 → <span class="hljs-title class_">Horizon</span>/CLI → <span class="hljs-title class_">Keystone</span>(认证) → <span class="hljs-title class_">Nova</span> API → <span class="hljs-title class_">Nova</span> <span class="hljs-title class_">Scheduler</span> → <span class="hljs-title class_">Nova</span> <span class="hljs-title class_">Compute</span><br>                                                          ↓<br>                                              <span class="hljs-title class_">Glance</span>(下载镜像)<br>                                              <span class="hljs-title class_">Neutron</span>(分配网络)<br>                                              <span class="hljs-title class_">Cinder</span>(创建卷)<br>                                              <span class="hljs-title function_">libvirt</span>(创建VM)<br></code></pre></td></tr></table></figure>
+
+<p>详细步骤：</p>
+<p><strong>第1步：认证</strong><br>用户通过 Horizon 或 CLI 输入用户名密码，向 Keystone 请求 Token。Keystone 验证通过后返回 Token 和服务目录。</p>
+<p><strong>第2步：提交创建请求</strong><br>用户拿着 Token，向 Nova API 发送创建虚拟机的请求，参数包括：镜像ID、规格（flavor）、网络ID、数据盘大小、密钥对等。</p>
+<p><strong>第3步：Nova API 处理</strong><br>nova-api 验证参数合法性（镜像是否存在、规格是否合法、网络是否存在、配额是否足够），然后在数据库里创建虚拟机记录（状态 BUILD），通过消息队列发送请求给 nova-scheduler。</p>
+<p><strong>第4步：调度</strong><br>nova-scheduler 收到请求后，执行调度算法：</p>
+<ol>
+<li><strong>过滤（Filtering）</strong>：从所有计算节点中过滤掉不满足条件的节点（资源不足、架构不匹配、可用性域不对、亲和性规则等）</li>
+<li><strong>加权（Weighting）</strong>：对剩余的节点打分，选出得分最高的节点（通常是剩余资源最多的节点，实现负载均衡）</li>
+<li>把调度结果通过消息队列发给目标节点的 nova-compute</li>
+</ol>
+<p><strong>第5步：Nova Compute 准备</strong><br>目标节点的 nova-compute 收到请求后：</p>
+<ol>
+<li>检查本地是否有需要的镜像缓存，没有就从 Glance 下载镜像到本地</li>
+<li>调用 Neutron API 创建一个端口（Port），分配 IP 地址和 MAC 地址</li>
+<li>调用 Cinder API 创建系统盘（如果是卷启动）和数据盘，然后把卷挂载到计算节点（通过 iSCSI 或 RBD 映射）</li>
+<li>生成虚拟机的 XML 配置文件（libvirt domain XML），包含 CPU、内存、磁盘、网络、VNC 等配置</li>
+</ol>
+<p><strong>第6步：创建虚拟机</strong><br>nova-compute 调用 libvirt API，根据 XML 配置创建并启动 KVM 虚拟机。libvirt 会：</p>
+<ol>
+<li>创建网络命名空间和 veth pair（如果用 Linux Bridge）或配置 OVS 端口（如果用 OVS）</li>
+<li>创建 cgroup，限制 CPU 和内存</li>
+<li>启动 QEMU 进程，加载镜像，启动虚拟机</li>
+<li>配置 VNC 监听端口</li>
+</ol>
+<p><strong>第7步：虚拟机启动</strong><br>虚拟机内部启动操作系统，通过 DHCP 获取 IP 地址（Neutron 的 DHCP agent 提供），启动完成后向 metadata service 请求元数据。</p>
+<p><strong>第8步：状态更新</strong><br>nova-compute 检测到虚拟机启动成功，更新数据库里的虚拟机状态为 ACTIVE，同时通过消息队列通知 nova-api。用户在 Horizon 上看到虚拟机状态变为”运行中”。</p>
+<p>整个流程涉及 Keystone、Nova（api&#x2F;scheduler&#x2F;compute&#x2F;conductor）、Glance、Neutron、Cinder、libvirt 多个组件的协作，通过消息队列异步解耦，通过数据库共享状态。</p>
+<h2 id="四、OpenStack-的网络模型"><a href="#四、OpenStack-的网络模型" class="headerlink" title="四、OpenStack 的网络模型"></a>四、OpenStack 的网络模型</h2><p>Neutron 的网络模型是 OpenStack 里最容易让人困惑的部分，这里单独讲一下。</p>
+<h3 id="4-1-租户网络-vs-运营商网络"><a href="#4-1-租户网络-vs-运营商网络" class="headerlink" title="4.1 租户网络 vs 运营商网络"></a>4.1 租户网络 vs 运营商网络</h3><ul>
+<li><strong>租户网络（Tenant Network）</strong>：用户自己创建的虚拟网络，互相隔离。常用 VXLAN 或 GRE 封装，虚拟机 IP 是私网地址，通过虚拟路由器 + 浮动IP 访问外网</li>
+<li><strong>运营商网络（Provider Network）</strong>：管理员创建的、直接映射到物理网络的网络。虚拟机直接获取物理网络的 IP，不需要 NAT，性能好但隔离性差</li>
+</ul>
+<h3 id="4-2-典型网络拓扑"><a href="#4-2-典型网络拓扑" class="headerlink" title="4.2 典型网络拓扑"></a>4.2 典型网络拓扑</h3><figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><code class="hljs dns">           外部网络<span class="hljs-punctuation">(</span>公网<span class="hljs-punctuation">)</span><br>                │<br>           虚拟路由器<span class="hljs-punctuation">(</span>Router<span class="hljs-punctuation">)</span><br>          /              \<br>   子网<span class="hljs-keyword">A</span><span class="hljs-punctuation">(</span><span class="hljs-number">10.0.1.0</span>/<span class="hljs-number">24</span><span class="hljs-punctuation">)</span>  子网B<span class="hljs-punctuation">(</span><span class="hljs-number">10.0.2.0</span>/<span class="hljs-number">24</span><span class="hljs-punctuation">)</span><br>     │                      │<br>网络<span class="hljs-keyword">A</span><span class="hljs-punctuation">(</span>VXLAN<span class="hljs-punctuation">)</span>           网络B<span class="hljs-punctuation">(</span>VXLAN<span class="hljs-punctuation">)</span><br>     │                      │<br>虚拟机VM1               虚拟机VM2<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li>VM1 和 VM2 在不同的子网，通过虚拟路由器互通</li>
+<li>虚拟路由器有一个网关接口连接外部网络</li>
+<li>VM1 要访问外网，需要绑定浮动IP，路由器做 DNAT&#x2F;SNAT</li>
+<li>同一个网络内的虚拟机直接二层互通，不需要经过路由器</li>
+</ul>
+<h3 id="4-3-数据面实现（以-OVS-VXLAN-为例）"><a href="#4-3-数据面实现（以-OVS-VXLAN-为例）" class="headerlink" title="4.3 数据面实现（以 OVS + VXLAN 为例）"></a>4.3 数据面实现（以 OVS + VXLAN 为例）</h3><p>计算节点上的网络数据流：</p>
+<figure class="highlight dns"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dns">虚拟机VM1<span class="hljs-punctuation">(</span>tap设备<span class="hljs-punctuation">)</span> → br-int<span class="hljs-punctuation">(</span>集成网桥<span class="hljs-punctuation">)</span> → br-tun<span class="hljs-punctuation">(</span>隧道网桥<span class="hljs-punctuation">)</span> → eth0<span class="hljs-punctuation">(</span>物理网卡<span class="hljs-punctuation">)</span> → VXLAN隧道 → 对端计算节点<br></code></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>br-int（集成网桥）</strong>：所有虚拟机的 tap 设备都接在这个网桥上，负责 VLAN 标签的转换（内部 VLAN ID → 隧道 VNI）</li>
+<li><strong>br-tun（隧道网桥）</strong>：负责 VXLAN 隧道的封装和解封装，把二层帧封装成 VXLAN 报文发送到对端</li>
+<li><strong>流表（Flow Table）</strong>：OVS 通过流表控制转发，Neutron 的 OVS agent 负责下发流表</li>
+</ul>
+<p>安全组的实现：通过 iptables（Linux Bridge 模式）或 OVS 流表（OVS 防火墙驱动）实现，在虚拟机的 tap 设备前后过滤流量。</p>
+<h2 id="五、OpenStack-部署架构"><a href="#五、OpenStack-部署架构" class="headerlink" title="五、OpenStack 部署架构"></a>五、OpenStack 部署架构</h2><p>生产环境的 OpenStack 部署通常分几个节点角色：</p>
+<ul>
+<li><strong>控制节点（Controller）</strong>：运行 Keystone、Glance API、Nova API&#x2F;Scheduler&#x2F;Conductor、Neutron Server、Cinder API&#x2F;Scheduler、Horizon、MySQL、RabbitMQ。控制节点是无状态的，可以多节点部署做高可用</li>
+<li><strong>计算节点（Compute）</strong>：运行 Nova Compute、Neutron OVS Agent、Ceilometer Agent。实际跑虚拟机的节点，数量根据需求扩展</li>
+<li><strong>网络节点（Network）</strong>：运行 Neutron L3 Agent、DHCP Agent、Metadata Agent。负责虚拟路由器和 DHCP。可以和控制节点合并，也可以独立部署（大规模时独立）</li>
+<li><strong>存储节点（Storage）</strong>：运行 Cinder Volume、Swift Storage、Ceph OSD。提供块存储和对象存储</li>
+</ul>
+<p>高可用部署：</p>
+<ul>
+<li>控制节点至少 3 台，做 HA（Pacemaker + HAProxy，或 Kubernetes 部署）</li>
+<li>MySQL 主主复制或 Galera 集群</li>
+<li>RabbitMQ 集群</li>
+<li>虚拟机通过 Nova 的 evacuate 功能在计算节点故障时迁移到其他节点</li>
+</ul>
+<h2 id="六、OpenStack-vs-公有云-vs-Kubernetes"><a href="#六、OpenStack-vs-公有云-vs-Kubernetes" class="headerlink" title="六、OpenStack vs 公有云 vs Kubernetes"></a>六、OpenStack vs 公有云 vs Kubernetes</h2><p>经常有人问 OpenStack 和公有云、Kubernetes 的关系，简单对比一下：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>OpenStack</th>
+<th>公有云(AWS&#x2F;Aliyun)</th>
+<th>Kubernetes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>服务类型</td>
+<td>IaaS</td>
+<td>IaaS+PaaS+SaaS</td>
+<td>容器编排(PaaS)</td>
+</tr>
+<tr>
+<td>资源粒度</td>
+<td>虚拟机</td>
+<td>虚拟机+各种云服务</td>
+<td>容器</td>
+</tr>
+<tr>
+<td>部署方式</td>
+<td>自建私有云</td>
+<td>租用</td>
+<td>自建或托管</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>对数据安全要求高、需要完全控制基础设施的企业</td>
+<td>不想自己运维基础设施、需要弹性扩展</td>
+<td>微服务、云原生应用</td>
+</tr>
+<tr>
+<td>关系</td>
+<td>可以在 OpenStack 上跑 Kubernetes</td>
+<td>公有云提供托管 Kubernetes</td>
+<td>Kubernetes 可以跑在 OpenStack 虚拟机上</td>
+</tr>
+</tbody></table>
+<p>实际上三者不是竞争关系，而是互补的：很多企业在 OpenStack 私有云上跑 Kubernetes 集群，Kubernetes 管理容器，OpenStack 管理底层虚拟机和网络。混合云场景下，OpenStack 私有云 + 公有云 + Kubernetes 统一编排是常见架构。</p>
+<h2 id="七、总结"><a href="#七、总结" class="headerlink" title="七、总结"></a>七、总结</h2><p>OpenStack 的核心就六件事：</p>
+<ol>
+<li><strong>Keystone</strong>：管身份认证和服务目录，是所有服务的入口</li>
+<li><strong>Glance</strong>：管镜像，虚拟机的模板</li>
+<li><strong>Nova</strong>：管计算，虚拟机的生命周期</li>
+<li><strong>Neutron</strong>：管网络，虚拟网络、路由、安全组</li>
+<li><strong>Cinder</strong>：管块存储，云硬盘</li>
+<li><strong>Swift</strong>：管对象存储，存镜像和备份</li>
+</ol>
+<p>各个组件通过 REST API + 消息队列 + 数据库协作，无状态服务可以水平扩展，有状态的部分（数据库、消息队列、存储）需要单独做高可用。</p>
+<p>理解了组件职责和虚拟机创建流程，再看 OpenStack 的任何问题，都能定位到是哪个组件出了问题，然后针对性排查。OpenStack 虽然组件多，但每个组件的职责很清晰，掌握了核心六组件，其他组件（Heat 编排、Ceilometer 计量、Trove 数据库、Sahara 大数据等）都是在核心之上的扩展。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/" class="category-chain-item">云计算</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/OpenStack/" class="category-chain-item">OpenStack</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/OpenStack/" class="print-no-link">#OpenStack</a>
+      
+        <a href="/tags/Nova/" class="print-no-link">#Nova</a>
+      
+        <a href="/tags/Neutron/" class="print-no-link">#Neutron</a>
+      
+        <a href="/tags/Cinder/" class="print-no-link">#Cinder</a>
+      
+        <a href="/tags/Keystone/" class="print-no-link">#Keystone</a>
+      
+        <a href="/tags/Glance/" class="print-no-link">#Glance</a>
+      
+        <a href="/tags/%E4%BA%91%E5%B9%B3%E5%8F%B0/" class="print-no-link">#云平台</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>OpenStack 架构深度解析——从组件协作到虚拟机创建全流程</div>
+      <div>https://zhb816.github.io/2026/09/03/openstack-architecture-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年9月3日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/09/04/kubernetes-storage-deep-dive/" title="Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">Kubernetes 存储深度解析——PV、PVC、StorageClass 与 CSI 全链路</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/09/01/sdwan-dataplane-deep-dive/" title="SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路">
+                        <span class="hidden-mobile">SD-WAN 数据面深度解析——从 Overlay 隧道到智能选路</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+  
+  
+    <article id="comments" lazyload>
+      
+    <div id="giscus" class="giscus"></div>
+    <script type="text/javascript">
+      Fluid.utils.loadComments('#giscus', function() {
+        var options = {"repo":"Zhb816/zhb816.github.io","repo-id":"R_kgDOOUCvVA","category":"General","category-id":"DIC_kwDOOUCvVM4DE2t4","theme-light":"light","theme-dark":"dark","mapping":"pathname","reactions-enabled":"1","emit-metadata":"0","input-position":"bottom","lang":"zh-CN","theme":"preferred_color_scheme","crossorigin":"anonymous"};
+        var attributes = {};
+        for (let option in options) {
+          if (!option.startsWith('theme-')) {
+            var key = option.startsWith('data-') ? option : 'data-' + option;
+            attributes[key] = options[option];
+          }
+        }
+        var light = 'light';
+        var dark = 'dark';
+        window.GiscusThemeLight = light;
+        window.GiscusThemeDark = dark;
+        attributes['data-theme'] = document.documentElement.getAttribute('data-user-color-scheme') === 'dark' ? dark : light;
+        for (let attribute in attributes) {
+          var value = attributes[attribute];
+          if (value === undefined || value === null || value === '') {
+            delete attributes[attribute];
+          }
+        }
+        var s = document.createElement('script');
+        s.setAttribute('src', 'https://giscus.app/client.js');
+        s.setAttribute('crossorigin', 'anonymous');
+        for (let attribute in attributes) {
+          s.setAttribute(attribute, attributes[attribute]);
+        }
+        var ss = document.getElementsByTagName('script');
+        var e = ss.length > 0 ? ss[ss.length - 1] : document.head || document.documentElement;
+        e.parentNode.insertBefore(s, e.nextSibling);
+      });
+    </script>
+    <noscript>Please enable JavaScript to view the comments</noscript>
+
+
+    </article>
+  
+
+
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+    <div class="statistics">
+  
+  
+
+  
+    
+      <span id="busuanzi_container_site_pv" style="display: none">
+        总访问量 
+        <span id="busuanzi_value_site_pv"></span>
+         次
+      </span>
+    
+    
+      <span id="busuanzi_container_site_uv" style="display: none">
+        总访客数 
+        <span id="busuanzi_value_site_uv"></span>
+         人
+      </span>
+    
+    
+
+  
+
+</div>
+
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+  <script defer src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>
