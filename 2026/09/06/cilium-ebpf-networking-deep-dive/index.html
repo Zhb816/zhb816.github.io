@@ -1,0 +1,1306 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="Cilium 是目前 Kubernetes 网络领域最火的 CNI 插件，基于 eBPF 技术，号称要替代 kube-proxy、iptables，提供更高性能、更强大的网络策略和可观测性。Google Kubernetes Engine（GKE）已经把 Cilium 作为默认数据面，AWS EKS、Azure AKS 也都支持 Cilium。这篇文章从底层原理讲起，看看 Cilium 到底怎么用">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Cilium 网络深度解析——eBPF 如何替代 kube-proxy 重定义 Kubernetes 网络">
+<meta property="og:url" content="https://zhb816.github.io/2026/09/06/cilium-ebpf-networking-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="Cilium 是目前 Kubernetes 网络领域最火的 CNI 插件，基于 eBPF 技术，号称要替代 kube-proxy、iptables，提供更高性能、更强大的网络策略和可观测性。Google Kubernetes Engine（GKE）已经把 Cilium 作为默认数据面，AWS EKS、Azure AKS 也都支持 Cilium。这篇文章从底层原理讲起，看看 Cilium 到底怎么用">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-09-06T06:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-07T05:57:00.317Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="CNI">
+<meta property="article:tag" content="Cilium">
+<meta property="article:tag" content="Kubernetes">
+<meta property="article:tag" content="NetworkPolicy">
+<meta property="article:tag" content="Service">
+<meta property="article:tag" content="eBPF">
+<meta property="article:tag" content="kube-proxy">
+<meta property="article:tag" content="网络">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+    <meta name="referrer" content="no-referrer-when-downgrade">
+  
+  
+  <title>Cilium 网络深度解析——eBPF 如何替代 kube-proxy 重定义 Kubernetes 网络 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="Cilium 网络深度解析——eBPF 如何替代 kube-proxy 重定义 Kubernetes 网络"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-09-06 14:00" pubdate>
+          2026年9月6日 下午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          8.9k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          75 分钟
+        
+      </span>
+    
+
+    
+    
+      
+        <span id="busuanzi_container_page_pv" style="display: none">
+          <i class="iconfont icon-eye" aria-hidden="true"></i>
+          <span id="busuanzi_value_page_pv"></span> 次
+        </span>
+        
+
+      
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">Cilium 网络深度解析——eBPF 如何替代 kube-proxy 重定义 Kubernetes 网络</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>Cilium 是目前 Kubernetes 网络领域最火的 CNI 插件，基于 eBPF 技术，号称要替代 kube-proxy、iptables，提供更高性能、更强大的网络策略和可观测性。Google Kubernetes Engine（GKE）已经把 Cilium 作为默认数据面，AWS EKS、Azure AKS 也都支持 Cilium。这篇文章从底层原理讲起，看看 Cilium 到底怎么用 eBPF 重定义 K8s 网络。</p>
+<h2 id="一、传统-K8s-网络的问题"><a href="#一、传统-K8s-网络的问题" class="headerlink" title="一、传统 K8s 网络的问题"></a>一、传统 K8s 网络的问题</h2><p>在讲 Cilium 之前，先看看传统 K8s 网络（kube-proxy + iptables&#x2F;IPVS 模式）有什么问题。</p>
+<h3 id="1-1-kube-proxy-的工作原理"><a href="#1-1-kube-proxy-的工作原理" class="headerlink" title="1.1 kube-proxy 的工作原理"></a>1.1 kube-proxy 的工作原理</h3><p>kube-proxy 运行在每个节点上，负责实现 Service 的负载均衡。它的核心工作是：</p>
+<ul>
+<li>监听 API Server，获取 Service 和 Endpoint 的变化</li>
+<li>在节点上生成 iptables 规则（或 IPVS 规则）</li>
+<li>当 Pod 访问 Service IP 时，iptables 做 DNAT，把目标地址改成某个后端 Pod 的 IP</li>
+</ul>
+<p>以 iptables 模式为例，一个 ClusterIP Service 对应的 iptables 规则链：</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dart">PREROUTING → KUBE-SERVICES → KUBE-SVC-XXXX（<span class="hljs-title class_">Service</span> 链）→ KUBE-SEP-XXXX（<span class="hljs-title class_">Endpoint</span> 链，随机选一个后端）→ DNAT → 目标 <span class="hljs-title class_">Pod</span> IP<br></code></pre></td></tr></table></figure>
+
+<h3 id="1-2-传统方案的痛点"><a href="#1-2-传统方案的痛点" class="headerlink" title="1.2 传统方案的痛点"></a>1.2 传统方案的痛点</h3><p><strong>1. iptables 性能问题</strong></p>
+<ul>
+<li>iptables 规则是线性匹配的，Service 数量多了之后，每条包都要遍历很长的规则链，延迟增加</li>
+<li>大规模集群（几千个 Service）下，iptables 规则更新慢，CPU 占用高</li>
+<li>iptables 不支持增量更新，每次 Service 变化都要重新加载整个规则集</li>
+</ul>
+<p><strong>2. IPVS 模式的局限</strong></p>
+<ul>
+<li>IPVS 比 iptables 性能好（用哈希表，O(1) 查找），但仍然需要 iptables 做包过滤和 SNAT</li>
+<li>IPVS 只负责负载均衡，NetworkPolicy 还是要用 iptables 或其他方案</li>
+<li>IPVS 的连接跟踪（conntrack）在高并发下有性能瓶颈</li>
+</ul>
+<p><strong>3. 可观测性差</strong></p>
+<ul>
+<li>iptables&#x2F;IPVS 是黑盒，很难看到每个连接的详细信息</li>
+<li>排查网络问题只能靠 tcpdump、iptables -L，效率低</li>
+<li>没有内置的流量监控、策略命中统计</li>
+</ul>
+<p><strong>4. 功能有限</strong></p>
+<ul>
+<li>NetworkPolicy 只能基于 IP&#x2F;端口，不能基于应用层（HTTP、gRPC、Kafka）</li>
+<li>不支持七层负载均衡</li>
+<li>不支持透明加密（需要额外的服务网格）</li>
+<li>多集群网络支持弱</li>
+</ul>
+<p>Cilium 就是为了解决这些问题而生的——用 eBPF 在内核里做高效的包处理、负载均衡、网络策略，同时提供强大的可观测性。</p>
+<h2 id="二、Cilium-是什么"><a href="#二、Cilium-是什么" class="headerlink" title="二、Cilium 是什么"></a>二、Cilium 是什么</h2><p>Cilium 是一个基于 eBPF 的 Kubernetes CNI 插件，提供：</p>
+<ul>
+<li><strong>Pod 网络</strong>：Pod 之间的网络连通性（CNI 标准接口）</li>
+<li><strong>Service 负载均衡</strong>：替代 kube-proxy，用 eBPF 做高性能负载均衡</li>
+<li><strong>NetworkPolicy</strong>：用 eBPF 做网络策略，比 iptables 更灵活、性能更好</li>
+<li><strong>可观测性</strong>：内置 Hubble，提供网络流量的全栈可观测性</li>
+<li><strong>高级功能</strong>：七层网络策略、透明加密、多集群、服务网格（Cilium Service Mesh）、带宽管理</li>
+</ul>
+<p>Cilium 的核心设计理念：<strong>把网络数据面从 iptables&#x2F;IPVS 搬到 eBPF，在内核里做高效的包处理，同时提供更丰富的功能和可观测性。</strong></p>
+<h2 id="三、Cilium-的架构"><a href="#三、Cilium-的架构" class="headerlink" title="三、Cilium 的架构"></a>三、Cilium 的架构</h2><figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><code class="hljs dart">┌─────────────────────────────────────────────────────────┐<br>│                     <span class="hljs-title class_">Kubernetes</span> 控制面                      │<br>│  kube-apiserver  │  etcd  │  kube-scheduler  │  ...    │<br>└────────┬────────────────────────────────────────────────┘<br>         │ watch API<br>┌────────▼────────────────────────────────────────────────┐<br>│                      节点 <span class="hljs-title class_">Node</span>                             │<br>│  ┌──────────────┐   ┌──────────────┐   ┌────────────┐ │<br>│  │  <span class="hljs-title class_">Cilium</span>      │   │  <span class="hljs-title class_">Cilium</span>      │   │  <span class="hljs-title class_">Hubble</span>    │ │<br>│  │  <span class="hljs-title class_">Agent</span>       │   │  <span class="hljs-title class_">Operator</span>    │   │  <span class="hljs-title class_">Relay</span>     │ │<br>│  │ (<span class="hljs-title class_">DaemonSet</span>)  │   │ (<span class="hljs-title class_">Deployment</span>) │   │            │ │<br>│  └──────┬───────┘   └──────────────┘   └────────────┘ │<br>│         │ 加载/管理                                        │<br>│  ┌──────▼──────────────────────────────────────────────┐│<br>│  │              eBPF 程序（内核态）                       ││<br>│  │  tc/ingress  │  tc/egress  │  XDP  │  socket LB   ││<br>│  └──────────────────────────────────────────────────────┘│<br>│         │                                                  │<br>│  ┌──────▼───────┐   ┌──────────────┐                    │<br>│  │  CNI 插件     │   │  <span class="hljs-title class_">Pod</span> 网络     │                    │<br>│  │ (cni-plugin)  │   │  (veth pair) │                    │<br>│  └──────────────┘   └──────────────┘                    │<br>└──────────────────────────────────────────────────────────┘<br></code></pre></td></tr></table></figure>
+
+<p>Cilium 的核心组件：</p>
+<h3 id="3-1-Cilium-Agent（DaemonSet）"><a href="#3-1-Cilium-Agent（DaemonSet）" class="headerlink" title="3.1 Cilium Agent（DaemonSet）"></a>3.1 Cilium Agent（DaemonSet）</h3><p>运行在每个节点上，是 Cilium 的核心：</p>
+<ul>
+<li>监听 Kubernetes API，获取 Pod、Service、Endpoint、NetworkPolicy 的变化</li>
+<li>编译和加载 eBPF 程序到内核</li>
+<li>管理 eBPF Map（存储 Pod IP、身份、策略、负载均衡后端等信息）</li>
+<li>提供 CNI 接口（创建 Pod 时配置网络）</li>
+<li>提供 API 接口（供 Hubble、cilium CLI 使用）</li>
+<li>管理节点的网络配置（路由、ARP、邻居表）</li>
+</ul>
+<h3 id="3-2-Cilium-Operator（Deployment）"><a href="#3-2-Cilium-Operator（Deployment）" class="headerlink" title="3.2 Cilium Operator（Deployment）"></a>3.2 Cilium Operator（Deployment）</h3><p>集群级别的控制器，负责：</p>
+<ul>
+<li>管理 Cilium 的节点资源（CiliumNode CRD）</li>
+<li>分配 Pod CIDR（如果用 cluster-pool 模式）</li>
+<li>管理 Service 的负载均衡（在某些模式下）</li>
+<li>多集群相关的资源同步</li>
+<li>证书管理（如果启用了透明加密）</li>
+</ul>
+<h3 id="3-3-Hubble（可观测性）"><a href="#3-3-Hubble（可观测性）" class="headerlink" title="3.3 Hubble（可观测性）"></a>3.3 Hubble（可观测性）</h3><p>Hubble 是 Cilium 内置的网络可观测性组件：</p>
+<ul>
+<li><strong>Hubble Relay</strong>：聚合所有节点的 Hubble 数据，提供集群级别的查询 API</li>
+<li><strong>Hubble UI</strong>：Web 界面，展示服务依赖图、流量拓扑、策略命中</li>
+<li><strong>hubble CLI</strong>：命令行工具，实时查看网络流量、DNS、HTTP、TCP 事件</li>
+</ul>
+<p>Hubble 基于 eBPF 在内核里收集每个网络连接的信息（五元组、字节数、持续时间、协议、策略命中），不需要在 Pod 里注入 sidecar，零侵入。</p>
+<h3 id="3-4-eBPF-数据面"><a href="#3-4-eBPF-数据面" class="headerlink" title="3.4 eBPF 数据面"></a>3.4 eBPF 数据面</h3><p>这是 Cilium 最核心的部分。Cilium 在每个节点上加载多个 eBPF 程序，挂载到不同的内核钩子上：</p>
+<table>
+<thead>
+<tr>
+<th>eBPF 程序</th>
+<th>挂载点</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>tc&#x2F;ingress</td>
+<td>容器网卡的入方向</td>
+<td>Pod 入站流量处理：策略检查、负载均衡、连接跟踪</td>
+</tr>
+<tr>
+<td>tc&#x2F;egress</td>
+<td>容器网卡的出方向</td>
+<td>Pod 出站流量处理：策略检查、负载均衡、SNAT</td>
+</tr>
+<tr>
+<td>XDP</td>
+<td>物理网卡的最早接收点</td>
+<td>节点入站流量的最早处理：DDoS 防护、快速路径</td>
+</tr>
+<tr>
+<td>socket LB</td>
+<td>socket 创建&#x2F;连接时</td>
+<td>Service 负载均衡（在 socket 层就做 DNAT，性能最高）</td>
+</tr>
+<tr>
+<td>cgroup</td>
+<td>cgroup 级别的钩子</td>
+<td>主机命名空间的流量处理</td>
+</tr>
+</tbody></table>
+<h2 id="四、Cilium-的核心技术"><a href="#四、Cilium-的核心技术" class="headerlink" title="四、Cilium 的核心技术"></a>四、Cilium 的核心技术</h2><h3 id="4-1-身份（Identity）模型"><a href="#4-1-身份（Identity）模型" class="headerlink" title="4.1 身份（Identity）模型"></a>4.1 身份（Identity）模型</h3><p>传统 K8s 网络策略基于 IP 地址——但 Pod IP 是动态变化的，Pod 重建后 IP 就变了，基于 IP 的策略管理起来很麻烦。</p>
+<p>Cilium 引入了**身份（Identity）**模型：</p>
+<ul>
+<li>每个 Pod 根据它的 label 被分配一个数字身份（CiliumIdentity CRD）</li>
+<li>相同 label 的 Pod 共享同一个身份</li>
+<li>网络策略基于身份，而不是 IP</li>
+<li>Pod 重建后，只要 label 不变，身份就不变，策略自动生效</li>
+</ul>
+<p>身份的分配：</p>
+<ul>
+<li>Cilium Agent 监听到 Pod 创建后，根据 Pod 的 label 计算身份</li>
+<li>如果已有相同 label 的身份，复用；否则创建新的身份</li>
+<li>身份信息存在 eBPF Map 里，key 是 Pod IP，value 是身份 ID</li>
+<li>网络策略也存在 eBPF Map 里，key 是身份 ID，value 是允许&#x2F;拒绝的规则</li>
+</ul>
+<p>这样做的好处：</p>
+<ul>
+<li>策略基于 label，语义更清晰（”允许 frontend 访问 backend”，而不是”允许 10.0.1.0&#x2F;24 访问 10.0.2.0&#x2F;24”）</li>
+<li>Pod 重建不影响策略</li>
+<li>策略检查在 eBPF 里用身份 ID 做哈希查找，O(1) 性能，比 iptables 线性匹配快得多</li>
+</ul>
+<h3 id="4-2-Service-负载均衡（替代-kube-proxy）"><a href="#4-2-Service-负载均衡（替代-kube-proxy）" class="headerlink" title="4.2 Service 负载均衡（替代 kube-proxy）"></a>4.2 Service 负载均衡（替代 kube-proxy）</h3><p>Cilium 可以完全替代 kube-proxy，用 eBPF 实现 Service 负载均衡。有两种模式：</p>
+<p><strong>模式一：Socket LB（最高性能）</strong><br>在 socket 层（应用调用 connect() 时）就做负载均衡和 DNAT：</p>
+<ul>
+<li>eBPF 程序挂在 cgroup&#x2F;socket 钩子上，拦截 connect() 系统调用</li>
+<li>查找 Service 的后端列表，选一个后端 Pod IP</li>
+<li>直接把 connect() 的目标地址改成后端 Pod IP</li>
+<li>包根本不需要经过协议栈的 NAT 处理，性能最高</li>
+</ul>
+<p>这种模式下，从 Pod 到 Service 的连接，在 socket 层就被重定向到了后端 Pod，完全绕过了 iptables&#x2F;IPVS。</p>
+<p><strong>模式二：TC&#x2F;iptables 兼容模式</strong><br>对于不支持 Socket LB 的场景（比如主机命名空间的进程、UDP 流量），Cilium 用 tc eBPF 程序做负载均衡，在 tc&#x2F;ingress 或 tc&#x2F;egress 钩子上做 DNAT。</p>
+<p><strong>负载均衡算法</strong>：</p>
+<ul>
+<li>随机（Random）：默认，随机选一个后端</li>
+<li>源地址哈希（Maglev）：一致性哈希，相同源 IP 总是到同一个后端，适合需要会话保持的场景</li>
+<li>轮询（Round Robin）：在 eBPF 里实现有状态的轮询</li>
+</ul>
+<p><strong>后端管理</strong>：</p>
+<ul>
+<li>Service 的后端列表存在 eBPF Map 里（LPM trie 或哈希表）</li>
+<li>Endpoint 变化时，Cilium Agent 增量更新 Map，不需要重新加载整个规则集</li>
+<li>支持会话亲和性、连接保持、优雅终止（terminating 状态的后端逐渐移除）</li>
+</ul>
+<h3 id="4-3-NetworkPolicy（网络策略）"><a href="#4-3-NetworkPolicy（网络策略）" class="headerlink" title="4.3 NetworkPolicy（网络策略）"></a>4.3 NetworkPolicy（网络策略）</h3><p>Cilium 实现了 K8s 标准的 NetworkPolicy，还扩展了 CiliumNetworkPolicy（CNP）和 CiliumClusterwideNetworkPolicy（CCNP），支持更强大的策略：</p>
+<p><strong>标准 NetworkPolicy</strong>：</p>
+<ul>
+<li>基于 Pod label、namespace label、IP CIDR 的入站&#x2F;出站规则</li>
+<li>基于端口的规则</li>
+</ul>
+<p><strong>CiliumNetworkPolicy 扩展</strong>：</p>
+<ul>
+<li><strong>七层策略</strong>：基于 HTTP 方法&#x2F;路径、gRPC 服务&#x2F;方法、Kafka 主题、DNS 域名的策略<ul>
+<li>例如：”只允许 frontend 调用 backend 的 &#x2F;api&#x2F;v1&#x2F;* 路径，不允许 &#x2F;admin”</li>
+<li>例如：”只允许查询 *.example.com 域名”</li>
+</ul>
+</li>
+<li><strong>基于身份的策略</strong>：基于 Cilium 身份，而不是 IP</li>
+<li><strong>更细粒度的端口范围</strong>：支持端口范围、ICMP 类型</li>
+<li><strong>策略审计模式</strong>：只记录不拒绝，用于策略上线前的验证</li>
+<li><strong>策略命中统计</strong>：每个规则的命中次数、字节数</li>
+</ul>
+<p><strong>策略执行</strong>：</p>
+<ul>
+<li>策略规则存在 eBPF Map 里，key 是身份 ID + 端口 + 协议</li>
+<li>tc&#x2F;ingress 和 tc&#x2F;egress 的 eBPF 程序查 Map 做策略检查</li>
+<li>命中拒绝规则的包直接丢弃，命中允许规则的包继续转发</li>
+<li>所有命中事件通过 perf ring 或 ring buffer 发送到用户态，供 Hubble 记录</li>
+</ul>
+<h3 id="4-4-连接跟踪（Conntrack）"><a href="#4-4-连接跟踪（Conntrack）" class="headerlink" title="4.4 连接跟踪（Conntrack）"></a>4.4 连接跟踪（Conntrack）</h3><p>Cilium 用 eBPF Map 实现了自己的连接跟踪表，替代内核的 conntrack：</p>
+<ul>
+<li>每个 TCP&#x2F;UDP 连接的状态存在 eBPF Map 里</li>
+<li>支持 NAT 状态记录（做了 DNAT&#x2F;SNAT 的连接）</li>
+<li>支持连接的字节数、包数统计</li>
+<li>比内核 conntrack 更高效，没有 conntrack 表满的问题</li>
+<li>可以针对每个连接做策略和监控</li>
+</ul>
+<h3 id="4-5-透明加密"><a href="#4-5-透明加密" class="headerlink" title="4.5 透明加密"></a>4.5 透明加密</h3><p>Cilium 支持 Pod 之间的透明加密，有两种方式：</p>
+<ul>
+<li><strong>IPsec</strong>：基于内核 IPsec，在节点之间建立 IPsec 隧道，Pod 流量自动加密</li>
+<li><strong>WireGuard</strong>：基于 WireGuard 内核模块，性能更好，配置更简单</li>
+</ul>
+<p>加密是节点到节点的，Pod 不需要做任何配置，流量离开节点时自动加密，到达对端节点时解密。适合对数据安全要求高的场景（比如金融、医疗、多租户）。</p>
+<h3 id="4-6-带宽管理（Bandwidth-Manager）"><a href="#4-6-带宽管理（Bandwidth-Manager）" class="headerlink" title="4.6 带宽管理（Bandwidth Manager）"></a>4.6 带宽管理（Bandwidth Manager）</h3><p>Cilium 支持基于 eBPF 的带宽管理：</p>
+<ul>
+<li>为每个 Pod 设置带宽限制（egress 限速）</li>
+<li>用 eBPF + EDT（Earliest Departure Time）做高效的流量整形</li>
+<li>比传统的 tc qdisc（HTB、TBF）性能更好，延迟更低</li>
+<li>可以配合 Kubernetes 的 Traffic Control 或 Cilium 的注解使用</li>
+</ul>
+<h3 id="4-7-多集群（Cluster-Mesh）"><a href="#4-7-多集群（Cluster-Mesh）" class="headerlink" title="4.7 多集群（Cluster Mesh）"></a>4.7 多集群（Cluster Mesh）</h3><p>Cilium 支持多集群网络互联（Cluster Mesh）：</p>
+<ul>
+<li>多个 K8s 集群的 Pod 可以直接通信（Pod IP 路由）</li>
+<li>跨集群的 Service 发现和负载均衡（Global Service）</li>
+<li>跨集群的网络策略</li>
+<li>不需要 VPN 或特殊网关，节点之间直接路由（需要网络连通）</li>
+<li>支持基于身份的策略跨集群生效</li>
+</ul>
+<p>适合多活数据中心、混合云、灾备等场景。</p>
+<h2 id="五、Cilium-的数据包流程"><a href="#五、Cilium-的数据包流程" class="headerlink" title="五、Cilium 的数据包流程"></a>五、Cilium 的数据包流程</h2><p>理解了组件和技术，现在走一遍数据包的完整流程，看看 Cilium 怎么处理 Pod 到 Pod 的流量。</p>
+<p>场景：Node A 上的 Pod A 访问 Node B 上的 Pod B（通过 Service 或直接 Pod IP）。</p>
+<h3 id="5-1-出站（Pod-A-→-Node-A-物理网卡）"><a href="#5-1-出站（Pod-A-→-Node-A-物理网卡）" class="headerlink" title="5.1 出站（Pod A → Node A 物理网卡）"></a>5.1 出站（Pod A → Node A 物理网卡）</h3><figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><code class="hljs dart"><span class="hljs-title class_">Pod</span> A 应用 → <span class="hljs-title function_">socket</span>() → <span class="hljs-title function_">connect</span>()/<span class="hljs-title function_">sendto</span>()<br>    │<br>    ▼<br>[cgroup/socket eBPF] <span class="hljs-title class_">Socket</span> LB：如果目标是 <span class="hljs-title class_">Service</span>，在这里做 DNAT，选后端 <span class="hljs-title class_">Pod</span> B IP<br>    │<br>    ▼<br>协议栈路由 → 找到 <span class="hljs-title class_">Pod</span> B IP 在下一跳是 <span class="hljs-title class_">Node</span> B（通过节点路由或隧道）<br>    │<br>    ▼<br>veth pair（<span class="hljs-title class_">Pod</span> A 的网卡 → 节点上的 veth 端）<br>    │<br>    ▼<br>[tc/egress eBPF] 出站处理：<br>  <span class="hljs-number">1</span>. 查连接跟踪表，是否已有连接<br>  <span class="hljs-number">2</span>. 查身份 <span class="hljs-title class_">Map</span>，获取 <span class="hljs-title class_">Pod</span> A 的身份<br>  <span class="hljs-number">3</span>. 查网络策略 <span class="hljs-title class_">Map</span>，出站策略是否允许<br>  <span class="hljs-number">4</span>. 如果是 <span class="hljs-title class_">Service</span> 且 <span class="hljs-title class_">Socket</span> LB 没处理，在这里做 DNAT<br>  <span class="hljs-number">5</span>. 如果需要 SNAT（访问外部），做 SNAT<br>  <span class="hljs-number">6</span>. 更新连接跟踪表<br>  <span class="hljs-number">7</span>. 记录流量事件（<span class="hljs-title class_">Hubble</span>）<br>    │<br>    ▼<br>节点路由 → 封装（VXLAN/<span class="hljs-title class_">Geneve</span> 隧道 或 直接路由）→ 物理网卡发出<br></code></pre></td></tr></table></figure>
+
+<h3 id="5-2-入站（Node-B-物理网卡-→-Pod-B）"><a href="#5-2-入站（Node-B-物理网卡-→-Pod-B）" class="headerlink" title="5.2 入站（Node B 物理网卡 → Pod B）"></a>5.2 入站（Node B 物理网卡 → Pod B）</h3><figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><code class="hljs dart">物理网卡收到包<br>    │<br>    ▼<br>[XDP eBPF]（可选）最早的入站处理：<span class="hljs-title class_">DDoS</span> 防护、快速路径<br>    │<br>    ▼<br>协议栈 → 解封装（如果是隧道包）→ 路由到 <span class="hljs-title class_">Pod</span> B 的 veth<br>    │<br>    ▼<br>[tc/ingress eBPF] 入站处理：<br>  <span class="hljs-number">1</span>. 查连接跟踪表<br>  <span class="hljs-number">2</span>. 查身份 <span class="hljs-title class_">Map</span>，获取源 <span class="hljs-title class_">Pod</span> A 的身份和目标 <span class="hljs-title class_">Pod</span> B 的身份<br>  <span class="hljs-number">3</span>. 查网络策略 <span class="hljs-title class_">Map</span>，入站策略是否允许（基于身份）<br>  <span class="hljs-number">4</span>. 如果是七层策略（HTTP/DNS），解析应用层数据，检查策略<br>  <span class="hljs-number">5</span>. 更新连接跟踪表<br>  <span class="hljs-number">6</span>. 记录流量事件（<span class="hljs-title class_">Hubble</span>）<br>    │<br>    ▼<br>veth pair → <span class="hljs-title class_">Pod</span> B 的网卡 → <span class="hljs-title class_">Pod</span> B 应用<br></code></pre></td></tr></table></figure>
+
+<p>整个流程中，所有的策略检查、负载均衡、连接跟踪都在 eBPF 程序里完成，不需要 iptables，性能高、延迟低、可观测性强。</p>
+<h2 id="六、Cilium-vs-传统方案对比"><a href="#六、Cilium-vs-传统方案对比" class="headerlink" title="六、Cilium vs 传统方案对比"></a>六、Cilium vs 传统方案对比</h2><table>
+<thead>
+<tr>
+<th>维度</th>
+<th>kube-proxy + iptables</th>
+<th>kube-proxy + IPVS</th>
+<th>Cilium (eBPF)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Service 负载均衡</td>
+<td>iptables 随机</td>
+<td>IPVS（多种算法）</td>
+<td>eBPF Socket LB + Maglev</td>
+</tr>
+<tr>
+<td>查找复杂度</td>
+<td>O(n) 线性</td>
+<td>O(1) 哈希</td>
+<td>O(1) 哈希</td>
+</tr>
+<tr>
+<td>大规模性能</td>
+<td>差（几千 Service 就慢）</td>
+<td>中</td>
+<td>好</td>
+</tr>
+<tr>
+<td>NetworkPolicy</td>
+<td>iptables（标准）</td>
+<td>需额外方案</td>
+<td>eBPF（标准+扩展七层）</td>
+</tr>
+<tr>
+<td>七层策略</td>
+<td>不支持</td>
+<td>不支持</td>
+<td>支持（HTTP&#x2F;gRPC&#x2F;Kafka&#x2F;DNS）</td>
+</tr>
+<tr>
+<td>可观测性</td>
+<td>弱（黑盒）</td>
+<td>弱</td>
+<td>强（Hubble，全栈可观测）</td>
+</tr>
+<tr>
+<td>透明加密</td>
+<td>不支持</td>
+<td>不支持</td>
+<td>支持（IPsec&#x2F;WireGuard）</td>
+</tr>
+<tr>
+<td>多集群</td>
+<td>不支持</td>
+<td>不支持</td>
+<td>支持（Cluster Mesh）</td>
+</tr>
+<tr>
+<td>带宽管理</td>
+<td>不支持</td>
+<td>不支持</td>
+<td>支持（eBPF EDT）</td>
+</tr>
+<tr>
+<td>内核依赖</td>
+<td>低（老内核也行）</td>
+<td>中（需要 IPVS 模块）</td>
+<td>高（需要较新内核和 eBPF 支持）</td>
+</tr>
+<tr>
+<td>学习成本</td>
+<td>低</td>
+<td>中</td>
+<td>高（eBPF 概念多）</td>
+</tr>
+</tbody></table>
+<h2 id="七、Cilium-部署和运维"><a href="#七、Cilium-部署和运维" class="headerlink" title="七、Cilium 部署和运维"></a>七、Cilium 部署和运维</h2><h3 id="7-1-部署模式"><a href="#7-1-部署模式" class="headerlink" title="7.1 部署模式"></a>7.1 部署模式</h3><p>Cilium 有几种部署模式：</p>
+<ul>
+<li><strong>Overlay（隧道模式）</strong>：节点之间用 VXLAN 或 Geneve 隧道封装 Pod 流量，不需要底层网络支持 Pod IP 路由。最简单，适合大多数环境</li>
+<li><strong>Native Routing（直接路由模式）</strong>：Pod IP 直接在底层网络路由，不需要封装，性能最高。需要底层网络（交换机、路由器）支持 Pod CIDR 的路由，或者用 BGP 动态广播路由（配合 kube-router、MetalLB 等）</li>
+<li><strong>AWS ENI &#x2F; Azure IPAM &#x2F; GKE 模式</strong>：云厂商特定的 IPAM 模式，直接分配云厂商的辅助 IP 给 Pod，性能最高，没有封装</li>
+</ul>
+<h3 id="7-2-内核要求"><a href="#7-2-内核要求" class="headerlink" title="7.2 内核要求"></a>7.2 内核要求</h3><p>Cilium 基于 eBPF，对内核版本有要求：</p>
+<ul>
+<li>最低：Linux 4.19（基本功能）</li>
+<li>推荐：Linux 5.10+（大部分功能）</li>
+<li>最佳：Linux 5.15+ &#x2F; 6.x（所有功能，包括 Socket LB、带宽管理、WireGuard）</li>
+</ul>
+<p>主流发行版支持：</p>
+<ul>
+<li>Ubuntu 20.04+（5.4+ 内核）</li>
+<li>CentOS 8 &#x2F; RHEL 8（4.18 内核，但 backport 了 eBPF 特性）</li>
+<li>CentOS Stream 9 &#x2F; RHEL 9（5.14 内核）</li>
+<li>较新的云厂商托管 K8s（GKE、EKS、AKS）默认内核都满足</li>
+</ul>
+<h3 id="7-3-常见运维操作"><a href="#7-3-常见运维操作" class="headerlink" title="7.3 常见运维操作"></a>7.3 常见运维操作</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><code class="hljs bash"><span class="hljs-comment"># 查看 Cilium 状态</span><br>cilium status<br><br><span class="hljs-comment"># 查看节点上的 eBPF Map</span><br>cilium bpf metrics list<br><br><span class="hljs-comment"># 查看连接跟踪表</span><br>cilium bpf ct list global<br><br><span class="hljs-comment"># 查看负载均衡后端</span><br>cilium service list<br><br><span class="hljs-comment"># 查看身份</span><br>cilium identity list<br><br><span class="hljs-comment"># 查看网络策略</span><br>cilium policy get<br><br><span class="hljs-comment"># 实时查看网络流量（类似 tcpdump）</span><br>hubble observe<br><br><span class="hljs-comment"># 查看服务依赖图</span><br>hubble observe --service<br><br><span class="hljs-comment"># 查看策略命中</span><br>hubble observe --policy-verdict denied<br></code></pre></td></tr></table></figure>
+
+<h3 id="7-4-常见问题排查"><a href="#7-4-常见问题排查" class="headerlink" title="7.4 常见问题排查"></a>7.4 常见问题排查</h3><p><strong>Pod 之间不通</strong>：</p>
+<ol>
+<li>检查 Cilium Agent 是否正常运行：<code>kubectl get pods -n kube-system -l k8s-app=cilium</code></li>
+<li>检查 Cilium 状态：<code>cilium status</code></li>
+<li>检查 eBPF 程序是否加载：<code>cilium bpf metrics list</code></li>
+<li>检查身份是否正确分配：<code>cilium identity list</code></li>
+<li>检查网络策略：<code>cilium policy get</code></li>
+<li>用 hubble observe 看流量在哪一跳被丢</li>
+</ol>
+<p><strong>Service 不通</strong>：</p>
+<ol>
+<li>检查 Service 后端：<code>cilium service list</code></li>
+<li>检查 Socket LB 是否启用</li>
+<li>检查 Endpoint 是否正常</li>
+</ol>
+<p><strong>性能问题</strong>：</p>
+<ol>
+<li>检查是否用了 Overlay 模式（隧道封装有开销）</li>
+<li>检查是否启用了 Socket LB（最高性能）</li>
+<li>检查 eBPF 程序的验证器日志</li>
+<li>用 <code>cilium bpf metrics run</code> 看 eBPF 程序的执行统计</li>
+</ol>
+<h2 id="八、Cilium-Service-Mesh"><a href="#八、Cilium-Service-Mesh" class="headerlink" title="八、Cilium Service Mesh"></a>八、Cilium Service Mesh</h2><p>Cilium 最近在推服务网格（Cilium Service Mesh），目标是替代 Istio 这类 sidecar 模式的服务网格：</p>
+<ul>
+<li>不需要在每个 Pod 里注入 sidecar 代理</li>
+<li>用 eBPF 在内核里做七层流量管理（HTTP 路由、重试、超时、熔断）</li>
+<li>用 Envoy 做七层代理（按需部署，不是 sidecar，而是节点级或按需的代理）</li>
+<li>支持 mTLS、流量镜像、灰度发布、故障注入</li>
+</ul>
+<p>Cilium Service Mesh 的优势：</p>
+<ul>
+<li>没有 sidecar 的资源开销（每个 Pod 少一个 Envoy 进程）</li>
+<li>延迟更低（内核层处理，不需要经过 sidecar 的用户态代理）</li>
+<li>运维更简单（不需要管理 sidecar 注入和升级）</li>
+</ul>
+<p>目前 Cilium Service Mesh 还在快速发展中，七层功能相比 Istio 还不够完善，但 sidecarless 的方向是未来的趋势。</p>
+<h2 id="九、总结"><a href="#九、总结" class="headerlink" title="九、总结"></a>九、总结</h2><p>Cilium 的核心就三点：</p>
+<ol>
+<li><strong>eBPF 数据面</strong>：用 eBPF 程序替代 iptables&#x2F;IPVS，在内核里做高性能的负载均衡、网络策略、连接跟踪</li>
+<li><strong>身份模型</strong>：基于 Pod label 的身份，而不是 IP，策略更清晰、性能更高</li>
+<li><strong>内置可观测性</strong>：Hubble 提供全栈网络可观测性，零侵入、低开销</li>
+</ol>
+<p>Cilium 能做什么：</p>
+<ul>
+<li>替代 kube-proxy，Service 负载均衡性能更高</li>
+<li>实现 K8s NetworkPolicy，还扩展了七层策略（HTTP&#x2F;gRPC&#x2F;Kafka&#x2F;DNS）</li>
+<li>提供网络可观测性（Hubble），排查网络问题更高效</li>
+<li>透明加密（IPsec&#x2F;WireGuard）</li>
+<li>多集群互联（Cluster Mesh）</li>
+<li>带宽管理、服务网格</li>
+</ul>
+<p>Cilium 不是没有门槛——它依赖较新的内核，eBPF 的概念比较多，学习曲线比传统方案陡。但它是 Kubernetes 网络的未来方向，GKE 已经默认采用，越来越多的企业在生产环境用 Cilium 替代传统的 kube-proxy + iptables 方案。作为运维和网络工程师，掌握 Cilium 和 eBPF 是必须的。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/" class="category-chain-item">云计算</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/Kubernetes/" class="category-chain-item">Kubernetes</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/Cilium/" class="print-no-link">#Cilium</a>
+      
+        <a href="/tags/eBPF/" class="print-no-link">#eBPF</a>
+      
+        <a href="/tags/Kubernetes/" class="print-no-link">#Kubernetes</a>
+      
+        <a href="/tags/CNI/" class="print-no-link">#CNI</a>
+      
+        <a href="/tags/kube-proxy/" class="print-no-link">#kube-proxy</a>
+      
+        <a href="/tags/%E7%BD%91%E7%BB%9C/" class="print-no-link">#网络</a>
+      
+        <a href="/tags/Service/" class="print-no-link">#Service</a>
+      
+        <a href="/tags/NetworkPolicy/" class="print-no-link">#NetworkPolicy</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>Cilium 网络深度解析——eBPF 如何替代 kube-proxy 重定义 Kubernetes 网络</div>
+      <div>https://zhb816.github.io/2026/09/06/cilium-ebpf-networking-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年9月6日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                      <a href="/2026/09/07/istio-service-mesh-deep-dive/" title="服务网格 Istio 深度解析——Sidecar、Envoy、流量管理与零信任安全">
+                        <i class="iconfont icon-arrowleft"></i>
+                        <span class="hidden-mobile">服务网格 Istio 深度解析——Sidecar、Envoy、流量管理与零信任安全</span>
+                        <span class="visible-mobile">上一篇</span>
+                      </a>
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/09/06/ebpf-technology-deep-dive/" title="eBPF 技术深度解析——从内核虚拟机到可观测性、网络与安全">
+                        <span class="hidden-mobile">eBPF 技术深度解析——从内核虚拟机到可观测性、网络与安全</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+  
+  
+    <article id="comments" lazyload>
+      
+    <div id="giscus" class="giscus"></div>
+    <script type="text/javascript">
+      Fluid.utils.loadComments('#giscus', function() {
+        var options = {"repo":"Zhb816/zhb816.github.io","repo-id":"R_kgDOOUCvVA","category":"General","category-id":"DIC_kwDOOUCvVM4DE2t4","theme-light":"light","theme-dark":"dark","mapping":"pathname","reactions-enabled":"1","emit-metadata":"0","input-position":"bottom","lang":"zh-CN","theme":"preferred_color_scheme","crossorigin":"anonymous"};
+        var attributes = {};
+        for (let option in options) {
+          if (!option.startsWith('theme-')) {
+            var key = option.startsWith('data-') ? option : 'data-' + option;
+            attributes[key] = options[option];
+          }
+        }
+        var light = 'light';
+        var dark = 'dark';
+        window.GiscusThemeLight = light;
+        window.GiscusThemeDark = dark;
+        attributes['data-theme'] = document.documentElement.getAttribute('data-user-color-scheme') === 'dark' ? dark : light;
+        for (let attribute in attributes) {
+          var value = attributes[attribute];
+          if (value === undefined || value === null || value === '') {
+            delete attributes[attribute];
+          }
+        }
+        var s = document.createElement('script');
+        s.setAttribute('src', 'https://giscus.app/client.js');
+        s.setAttribute('crossorigin', 'anonymous');
+        for (let attribute in attributes) {
+          s.setAttribute(attribute, attributes[attribute]);
+        }
+        var ss = document.getElementsByTagName('script');
+        var e = ss.length > 0 ? ss[ss.length - 1] : document.head || document.documentElement;
+        e.parentNode.insertBefore(s, e.nextSibling);
+      });
+    </script>
+    <noscript>Please enable JavaScript to view the comments</noscript>
+
+
+    </article>
+  
+
+
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+    <div class="statistics">
+  
+  
+
+  
+    
+      <span id="busuanzi_container_site_pv" style="display: none">
+        总访问量 
+        <span id="busuanzi_value_site_pv"></span>
+         次
+      </span>
+    
+    
+      <span id="busuanzi_container_site_uv" style="display: none">
+        总访客数 
+        <span id="busuanzi_value_site_uv"></span>
+         人
+      </span>
+    
+    
+
+  
+
+</div>
+
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+  <script defer src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>

@@ -1,0 +1,1277 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-CN" data-default-color-scheme=auto>
+
+
+
+<head>
+  <meta charset="UTF-8">
+
+  <link rel="apple-touch-icon" sizes="76x76" href="/img/fluid.png">
+  <link rel="icon" href="/img/fluid.png">
+  
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, shrink-to-fit=no">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  
+  <meta name="theme-color" content="#2f4154">
+  <meta name="author" content="ZZZHB">
+  <meta name="keywords" content="运维,SD-WAN,Linux,网络,自动化">
+  
+    <meta name="description" content="GitOps 是这几年云原生领域最火的交付模式，被称为”Kubernetes 时代的 DevOps”。它的核心思想很简单：Git 是唯一的事实来源（Single Source of Truth），所有基础设施和应用的声明都存在 Git 里，通过自动化工具把 Git 里的状态同步到运行环境。 ArgoCD 是目前最主流的 GitOps 持续交付工具。这篇文章从原理到实践，把 GitOps 和 Arg">
+<meta property="og:type" content="article">
+<meta property="og:title" content="GitOps 与 ArgoCD 深度解析——声明式持续交付的原理、架构与实践">
+<meta property="og:url" content="https://zhb816.github.io/2026/09/07/gitops-argocd-deep-dive/index.html">
+<meta property="og:site_name" content="ZZZHB 的笔记本">
+<meta property="og:description" content="GitOps 是这几年云原生领域最火的交付模式，被称为”Kubernetes 时代的 DevOps”。它的核心思想很简单：Git 是唯一的事实来源（Single Source of Truth），所有基础设施和应用的声明都存在 Git 里，通过自动化工具把 Git 里的状态同步到运行环境。 ArgoCD 是目前最主流的 GitOps 持续交付工具。这篇文章从原理到实践，把 GitOps 和 Arg">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-09-07T06:00:00.000Z">
+<meta property="article:modified_time" content="2026-09-07T06:01:40.270Z">
+<meta property="article:author" content="ZZZHB">
+<meta property="article:tag" content="ArgoCD">
+<meta property="article:tag" content="CI&#x2F;CD">
+<meta property="article:tag" content="DevOps">
+<meta property="article:tag" content="GitOps">
+<meta property="article:tag" content="Kubernetes">
+<meta property="article:tag" content="声明式">
+<meta property="article:tag" content="持续交付">
+<meta name="twitter:card" content="summary_large_image">
+  
+  
+    <meta name="referrer" content="no-referrer-when-downgrade">
+  
+  
+  <title>GitOps 与 ArgoCD 深度解析——声明式持续交付的原理、架构与实践 - ZZZHB 的笔记本</title>
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/twitter-bootstrap/4.6.1/css/bootstrap.min.css" />
+
+
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/github-markdown-css/4.0.0/github-markdown.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/hint.css/2.7.0/hint.min.css" />
+
+  <link  rel="stylesheet" href="https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.css" />
+
+
+
+<!-- 主题依赖的图标库，不要自行修改 -->
+<!-- Do not modify the link that theme dependent icons -->
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1749284_5i9bdhy70f8.css">
+
+
+
+<link rel="stylesheet" href="//at.alicdn.com/t/c/font_1736178_k526ubmyhba.css">
+
+
+<link  rel="stylesheet" href="/css/main.css" />
+
+
+  <link id="highlight-css" rel="stylesheet" href="/css/highlight.css" />
+  
+    <link id="highlight-css-dark" rel="stylesheet" href="/css/highlight-dark.css" />
+  
+
+
+
+
+  <script id="fluid-configs">
+    var Fluid = window.Fluid || {};
+    Fluid.ctx = Object.assign({}, Fluid.ctx)
+    var CONFIG = {"hostname":"zhb816.github.io","root":"/","version":"1.9.9","typing":{"enable":true,"typeSpeed":70,"cursorChar":"_","loop":false,"scope":[]},"anchorjs":{"enable":true,"element":"h1,h2,h3,h4,h5,h6","placement":"left","visible":"hover","icon":""},"progressbar":{"enable":true,"height_px":3,"color":"#29d","options":{"showSpinner":false,"trickleSpeed":100}},"code_language":{"enable":true,"default":"TEXT"},"copy_btn":true,"image_caption":{"enable":true},"image_zoom":{"enable":true,"img_url_replace":["",""]},"toc":{"enable":true,"expand_all":true,"placement":"right","headingSelector":"h1,h2,h3,h4,h5,h6","collapseDepth":0},"lazyload":{"enable":true,"loading_img":"/img/loading.gif","onlypost":false,"offset_factor":2},"web_analytics":{"enable":false,"follow_dnt":true,"baidu":null,"google":{"measurement_id":null},"tencent":{"sid":null,"cid":null},"leancloud":{"app_id":null,"app_key":null,"server_url":null,"path":"window.location.pathname","ignore_local":false},"openkounter":{"server_url":"https://open-kounter.mintimate.cn","path":"window.location.pathname","ignore_local":false},"umami":{"src":null,"website_id":null,"domains":null,"start_time":"2024-01-01T00:00:00.000Z","token":null,"api_server":null}},"search_path":"/local-search.xml","include_content_in_search":true};
+
+    if (CONFIG.web_analytics.follow_dnt) {
+      var dntVal = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+      Fluid.ctx.dnt = dntVal && (dntVal.startsWith('1') || dntVal.startsWith('yes') || dntVal.startsWith('on'));
+    }
+  </script>
+  <script  src="/js/utils.js" ></script>
+  <script  src="/js/color-schema.js" ></script>
+  
+
+
+  
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+
+<body>
+  
+
+  <header>
+    
+
+<div class="header-inner" style="height: 60vh;">
+  <nav id="navbar" class="navbar fixed-top  navbar-expand-lg navbar-dark scrolling-navbar">
+  <div class="container">
+    <a class="navbar-brand" href="/">
+      <strong>ZZZHB 的笔记本</strong>
+    </a>
+
+    <button id="navbar-toggler-btn" class="navbar-toggler" type="button" data-toggle="collapse"
+            data-target="#navbarSupportedContent"
+            aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <div class="animated-icon"><span></span><span></span><span></span></div>
+    </button>
+
+    <!-- Collapsible content (desktop) -->
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav ml-auto text-center">
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/" target="_self">
+                <i class="iconfont icon-home-fill"></i>
+                <span>首页</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/archives/" target="_self">
+                <i class="iconfont icon-archive-fill"></i>
+                <span>归档</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/categories/" target="_self">
+                <i class="iconfont icon-category-fill"></i>
+                <span>分类</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/tags/" target="_self">
+                <i class="iconfont icon-tags-fill"></i>
+                <span>标签</span>
+              </a>
+            </li>
+          
+        
+          
+          
+          
+          
+            <li class="nav-item">
+              <a class="nav-link" href="/about/" target="_self">
+                <i class="iconfont icon-user-fill"></i>
+                <span>关于</span>
+              </a>
+            </li>
+          
+        
+        
+          <li class="nav-item" id="search-btn">
+            <a class="nav-link" target="_self" href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <i class="iconfont icon-search"></i>
+            </a>
+          </li>
+          
+        
+        
+          <li class="nav-item" id="color-toggle-btn">
+            <a class="nav-link" target="_self" href="javascript:;" aria-label="Color Toggle">
+              <i class="iconfont icon-dark" id="color-toggle-icon"></i>
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile grid menu overlay -->
+<div id="mobile-grid-menu" class="d-lg-none">
+  <div class="mobile-grid-menu-inner">
+    <div class="container">
+      <div class="row">
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-home-fill"></i>
+                  <span>首页</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/archives/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-archive-fill"></i>
+                  <span>归档</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/categories/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-category-fill"></i>
+                  <span>分类</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/tags/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-tags-fill"></i>
+                  <span>标签</span>
+                </div>
+              </a>
+            </div>
+          
+        
+          
+          
+          
+          
+            <div class="col-4 mobile-grid-cell">
+              <a href="/about/" target="_self">
+                <div class="mobile-grid-item">
+                  <i class="iconfont icon-user-fill"></i>
+                  <span>关于</span>
+                </div>
+              </a>
+            </div>
+          
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-search-btn">
+            <a href="javascript:;" data-toggle="modal" data-target="#modalSearch" aria-label="Search">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-search"></i>
+                <span>搜索</span>
+              </div>
+            </a>
+          </div>
+        
+        
+          <div class="col-4 mobile-grid-cell" id="mobile-color-toggle-btn"
+               data-label-light="开灯"
+               data-label-dark="关灯">
+            <a href="javascript:;" aria-label="Color Toggle">
+              <div class="mobile-grid-item">
+                <i class="iconfont icon-dark" id="mobile-color-toggle-icon"></i>
+                <span id="mobile-color-toggle-label">关灯</span>
+              </div>
+            </a>
+          </div>
+        
+      </div>
+    </div>
+  </div>
+</div>
+
+  
+
+<div id="banner" class="banner" parallax=true
+     style="background: url('/img/default.png') no-repeat center center; background-size: cover;">
+  <div class="full-bg-img">
+    <div class="mask flex-center" style="background-color: rgba(0, 0, 0, 0.3)">
+      <div class="banner-text text-center fade-in-up">
+        <div class="h2">
+          
+            <span id="subtitle" data-typed-text="GitOps 与 ArgoCD 深度解析——声明式持续交付的原理、架构与实践"></span>
+          
+        </div>
+
+        
+          
+  <div class="mt-3">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-author" aria-hidden="true"></i>
+        ZZZHB
+      </span>
+    
+    
+      <span class="post-meta">
+        <i class="iconfont icon-date-fill" aria-hidden="true"></i>
+        <time datetime="2026-09-07 14:00" pubdate>
+          2026年9月7日 下午
+        </time>
+      </span>
+    
+  </div>
+
+  <div class="mt-1">
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-chart"></i>
+        
+          13k 字
+        
+      </span>
+    
+
+    
+      <span class="post-meta mr-2">
+        <i class="iconfont icon-clock-fill"></i>
+        
+        
+        
+          113 分钟
+        
+      </span>
+    
+
+    
+    
+      
+        <span id="busuanzi_container_page_pv" style="display: none">
+          <i class="iconfont icon-eye" aria-hidden="true"></i>
+          <span id="busuanzi_value_page_pv"></span> 次
+        </span>
+        
+
+      
+    
+  </div>
+
+
+        
+      </div>
+
+      
+    </div>
+  </div>
+</div>
+
+
+
+</div>
+
+  </header>
+
+  <main>
+    
+      
+
+<div class="container-fluid nopadding-x">
+  <div class="row nomargin-x">
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+
+    </div>
+
+    <div class="col-lg-8 nopadding-x-md">
+      <div class="container nopadding-x-md" id="board-ctn">
+        <div id="board">
+          <article class="post-content mx-auto">
+            <h1 id="seo-header">GitOps 与 ArgoCD 深度解析——声明式持续交付的原理、架构与实践</h1>
+            
+            
+              <div class="markdown-body">
+                
+                <p>GitOps 是这几年云原生领域最火的交付模式，被称为”Kubernetes 时代的 DevOps”。它的核心思想很简单：<strong>Git 是唯一的事实来源（Single Source of Truth），所有基础设施和应用的声明都存在 Git 里，通过自动化工具把 Git 里的状态同步到运行环境。</strong> ArgoCD 是目前最主流的 GitOps 持续交付工具。这篇文章从原理到实践，把 GitOps 和 ArgoCD 彻底讲清楚。</p>
+<h2 id="一、GitOps-是什么"><a href="#一、GitOps-是什么" class="headerlink" title="一、GitOps 是什么"></a>一、GitOps 是什么</h2><h3 id="1-1-传统-CI-CD-的问题"><a href="#1-1-传统-CI-CD-的问题" class="headerlink" title="1.1 传统 CI&#x2F;CD 的问题"></a>1.1 传统 CI&#x2F;CD 的问题</h3><p>传统的 CI&#x2F;CD 流程（Jenkins、GitLab CI 等）通常是这样的：</p>
+<figure class="highlight stata"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs stata">开发者提交代码 → <span class="hljs-keyword">CI</span> 构建镜像 → <span class="hljs-keyword">CD</span> 工具 kubectl apply 部署到集群<br></code></pre></td></tr></table></figure>
+
+<p>这种”推模式”（Push）有几个问题：</p>
+<ol>
+<li><strong>配置漂移（Configuration Drift）</strong>：有人在集群上手动改了配置（比如 kubectl edit、改了副本数），Git 里的配置和实际运行状态不一致，而且没人知道</li>
+<li><strong>凭证管理</strong>：CD 工具需要持有集群的 kubeconfig 凭证，凭证泄露风险大。多集群、多环境下凭证管理更复杂</li>
+<li><strong>可审计性差</strong>：谁在什么时候改了集群配置？如果是手动改的，没有记录。即使是 CD 工具改的，日志也可能丢失</li>
+<li><strong>回滚困难</strong>：部署出问题了，要回滚到上一个版本，需要重新跑一次 CD 流水线，或者手动 kubectl rollout undo</li>
+<li><strong>环境一致性</strong>：开发、测试、生产环境的配置容易不一致，很难保证”在测试环境验证过的配置”和”生产环境部署的配置”是同一个</li>
+</ol>
+<h3 id="1-2-GitOps-的核心思想"><a href="#1-2-GitOps-的核心思想" class="headerlink" title="1.2 GitOps 的核心思想"></a>1.2 GitOps 的核心思想</h3><p>GitOps 用”拉模式”（Pull）解决这些问题：</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><code class="hljs dart">开发者提交代码 → CI 构建镜像 → 更新 <span class="hljs-title class_">Git</span> 里的部署配置 → <span class="hljs-title class_">ArgoCD</span> 检测到 <span class="hljs-title class_">Git</span> 变化 → 自动同步到集群<br></code></pre></td></tr></table></figure>
+
+<p>GitOps 的四条核心原则（由 OpenGitOps 组织定义）：</p>
+<ol>
+<li><strong>声明式（Declarative）</strong>：所有被管理的资源都必须是声明式的（Kubernetes YAML、Terraform 等），描述”期望状态”而不是”怎么做”</li>
+<li><strong>版本化且不可变（Versioned and Immutable）</strong>：期望状态存在 Git 里，每次变更都有版本记录，不可篡改（Git 的历史是不可变的）</li>
+<li><strong>自动拉取（Pulled Automatically）</strong>：软件代理（ArgoCD）自动从 Git 拉取期望状态，不需要人工触发</li>
+<li><strong>持续调和（Continuously Reconciled）</strong>：软件代理持续对比期望状态（Git）和实际状态（集群），发现不一致就自动调和，同时报告差异</li>
+</ol>
+<h3 id="1-3-GitOps-的优势"><a href="#1-3-GitOps-的优势" class="headerlink" title="1.3 GitOps 的优势"></a>1.3 GitOps 的优势</h3><ul>
+<li><strong>配置一致性</strong>：Git 是唯一事实来源，集群状态始终和 Git 一致，手动改的配置会被自动覆盖（或检测到漂移并告警）</li>
+<li><strong>可审计</strong>：所有变更都有 Git commit 记录，谁在什么时候改了什么，一目了然。可以配合 PR 审核流程</li>
+<li><strong>回滚简单</strong>：回滚就是 <code>git revert</code>，Git 里的任何历史版本都可以快速恢复</li>
+<li><strong>凭证安全</strong>：ArgoCD 运行在集群内部，只需要向外拉取 Git，不需要集群凭证暴露给外部 CD 工具</li>
+<li><strong>环境一致性</strong>：多个环境（开发&#x2F;测试&#x2F;生产）用同一个 Git 仓库的不同分支或目录，配置复用，保证一致性</li>
+<li><strong>开发者体验好</strong>：开发者只需要和 Git 交互，不需要学 kubectl、不需要访问集群</li>
+</ul>
+<h2 id="二、ArgoCD-架构"><a href="#二、ArgoCD-架构" class="headerlink" title="二、ArgoCD 架构"></a>二、ArgoCD 架构</h2><p>ArgoCD 是一个 Kubernetes 控制器，持续监控 Git 仓库里的应用声明，和集群里的实际状态对比，自动同步。</p>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><code class="hljs dart">┌─────────────────────────────────────────────────────────────┐<br>│                        <span class="hljs-title class_">Git</span> 仓库                               │<br>│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │<br>│  │ 应用配置  │  │ 环境配置  │  │  <span class="hljs-title class_">Helm</span>    │  │ <span class="hljs-title class_">Kustomize</span>│  │<br>│  │ (YAML)   │  │ (values) │  │  <span class="hljs-title class_">Chart</span>   │  │ overlay  │  │<br>│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │<br>└──────────────────────────┬──────────────────────────────────┘<br>                           │ pull (<span class="hljs-title class_">Git</span> <span class="hljs-title class_">Webhook</span> / 轮询)<br>                           ▼<br>┌─────────────────────────────────────────────────────────────┐<br>│                    <span class="hljs-title class_">Kubernetes</span> 集群                            │<br>│                                                               │<br>│  ┌───────────────────────────────────────────────────────┐  │<br>│  │                   <span class="hljs-title class_">ArgoCD</span> 控制面                         │  │<br>│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │  │<br>│  │  │ API      │  │ <span class="hljs-title class_">Repo</span>     │  │ <span class="hljs-title class_">Application</span>│           │  │<br>│  │  │ <span class="hljs-title class_">Server</span>   │  │ <span class="hljs-title class_">Server</span>   │  │ <span class="hljs-title class_">Controller</span>│           │  │<br>│  │  └──────────┘  └──────────┘  └──────────┘           │  │<br>│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐           │  │<br>│  │  │ <span class="hljs-title class_">Redis</span>    │  │ <span class="hljs-title class_">Dex</span>      │  │ 通知     │           │  │<br>│  │  │ (缓存)   │  │ (认证)   │  │ <span class="hljs-title class_">Controller</span>│           │  │<br>│  │  └──────────┘  └──────────┘  └──────────┘           │  │<br>│  └───────────────────────────────────────────────────────┘  │<br>│                           │                                   │<br>│                           │ kubectl apply / 调和             │<br>│                           ▼                                   │<br>│  ┌───────────────────────────────────────────────────────┐  │<br>│  │                   工作负载                               │  │<br>│  │  <span class="hljs-title class_">Deployment</span> │ <span class="hljs-title class_">Service</span> │ <span class="hljs-title class_">ConfigMap</span> │ <span class="hljs-title class_">Ingress</span> │ ...     │  │<br>│  └───────────────────────────────────────────────────────┘  │<br>└─────────────────────────────────────────────────────────────┘<br></code></pre></td></tr></table></figure>
+
+<p>ArgoCD 的核心组件：</p>
+<h3 id="2-1-API-Server（argocd-server）"><a href="#2-1-API-Server（argocd-server）" class="headerlink" title="2.1 API Server（argocd-server）"></a>2.1 API Server（argocd-server）</h3><ul>
+<li>提供 REST API 和 gRPC API，供 ArgoCD CLI、Web UI、其他工具调用</li>
+<li>负责认证和授权（对接 Dex、OIDC、LDAP、SAML）</li>
+<li>无状态，可以水平扩展</li>
+</ul>
+<h3 id="2-2-Repository-Server（argocd-repo-server）"><a href="#2-2-Repository-Server（argocd-repo-server）" class="headerlink" title="2.2 Repository Server（argocd-repo-server）"></a>2.2 Repository Server（argocd-repo-server）</h3><ul>
+<li>负责和 Git 仓库交互，克隆仓库、生成 Kubernetes 清单</li>
+<li>支持多种配置管理工具：纯 YAML、Helm、Kustomize、Jsonnet、插件</li>
+<li>把生成的清单缓存起来，提高性能</li>
+<li>无状态，可以水平扩展</li>
+</ul>
+<h3 id="2-3-Application-Controller（argocd-application-controller）"><a href="#2-3-Application-Controller（argocd-application-controller）" class="headerlink" title="2.3 Application Controller（argocd-application-controller）"></a>2.3 Application Controller（argocd-application-controller）</h3><ul>
+<li>ArgoCD 的核心，负责持续调和（Reconciliation）</li>
+<li>监控每个 Application 的状态，对比 Git 里的期望状态和集群里的实际状态</li>
+<li>发现不一致时，根据同步策略自动同步或告警</li>
+<li>监控集群资源的变化，检测配置漂移</li>
+<li>有状态（需要缓存集群状态），通常单实例运行（也可以分片）</li>
+</ul>
+<h3 id="2-4-Redis"><a href="#2-4-Redis" class="headerlink" title="2.4 Redis"></a>2.4 Redis</h3><ul>
+<li>缓存 Git 仓库生成的清单、集群资源状态、应用状态</li>
+<li>提高性能，减少重复的 Git 拉取和清单生成</li>
+<li>可以用外部 Redis 或内置 Redis</li>
+</ul>
+<h3 id="2-5-Dex（可选）"><a href="#2-5-Dex（可选）" class="headerlink" title="2.5 Dex（可选）"></a>2.5 Dex（可选）</h3><ul>
+<li>身份认证服务，对接 OIDC、LDAP、SAML、GitHub、GitLab 等</li>
+<li>ArgoCD 本身不做用户管理，通过 Dex 对接外部身份提供者</li>
+<li>也可以直接用 ArgoCD 的本地用户（简单场景）</li>
+</ul>
+<h3 id="2-6-Notifications-Controller（argocd-notifications-controller）"><a href="#2-6-Notifications-Controller（argocd-notifications-controller）" class="headerlink" title="2.6 Notifications Controller（argocd-notifications-controller）"></a>2.6 Notifications Controller（argocd-notifications-controller）</h3><ul>
+<li>负责发送通知，当应用状态变化时（同步成功、同步失败、健康检查失败等）</li>
+<li>支持 Slack、Email、Webhook、Teams、钉钉、飞书等多种通知渠道</li>
+<li>可以自定义通知模板和触发条件</li>
+</ul>
+<h2 id="三、ArgoCD-核心概念"><a href="#三、ArgoCD-核心概念" class="headerlink" title="三、ArgoCD 核心概念"></a>三、ArgoCD 核心概念</h2><h3 id="3-1-Application（应用）"><a href="#3-1-Application（应用）" class="headerlink" title="3.1 Application（应用）"></a>3.1 Application（应用）</h3><p>Application 是 ArgoCD 的核心资源，定义了”从哪个 Git 仓库的哪个路径，同步到哪个集群的哪个命名空间”。</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">Application</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">my-app</span><br>  <span class="hljs-attr">namespace:</span> <span class="hljs-string">argocd</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">project:</span> <span class="hljs-string">default</span>                    <span class="hljs-comment"># 所属项目</span><br>  <span class="hljs-attr">source:</span><br>    <span class="hljs-attr">repoURL:</span> <span class="hljs-string">https://github.com/org/manifests.git</span><br>    <span class="hljs-attr">targetRevision:</span> <span class="hljs-string">main</span>             <span class="hljs-comment"># Git 分支/标签/commit</span><br>    <span class="hljs-attr">path:</span> <span class="hljs-string">my-app/overlays/prod</span>      <span class="hljs-comment"># 仓库内的路径</span><br>    <span class="hljs-comment"># 也可以用 Helm:</span><br>    <span class="hljs-comment"># chart: my-chart</span><br>    <span class="hljs-comment"># repoURL: https://charts.example.com</span><br>    <span class="hljs-comment"># targetRevision: 1.2.3</span><br>    <span class="hljs-comment"># helm:</span><br>    <span class="hljs-comment">#   valueFiles:</span><br>    <span class="hljs-comment">#   - values-prod.yaml</span><br>  <span class="hljs-attr">destination:</span><br>    <span class="hljs-attr">server:</span> <span class="hljs-string">https://kubernetes.default.svc</span>  <span class="hljs-comment"># 目标集群</span><br>    <span class="hljs-attr">namespace:</span> <span class="hljs-string">my-app-prod</span>                  <span class="hljs-comment"># 目标命名空间</span><br>  <span class="hljs-attr">syncPolicy:</span><br>    <span class="hljs-attr">automated:</span>                              <span class="hljs-comment"># 自动同步</span><br>      <span class="hljs-attr">prune:</span> <span class="hljs-literal">true</span>                           <span class="hljs-comment"># 自动删除 Git 里不存在的资源</span><br>      <span class="hljs-attr">selfHeal:</span> <span class="hljs-literal">true</span>                        <span class="hljs-comment"># 自动修复配置漂移</span><br>    <span class="hljs-attr">syncOptions:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">CreateNamespace=true</span>                  <span class="hljs-comment"># 自动创建命名空间</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">PrunePropagationPolicy=foreground</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">PruneLast=true</span><br></code></pre></td></tr></table></figure>
+
+<p>Application 的状态：</p>
+<ul>
+<li><strong>Synced（已同步）</strong>：集群状态和 Git 一致</li>
+<li><strong>OutOfSync（未同步）</strong>：集群状态和 Git 不一致，需要同步</li>
+<li><strong>Unknown（未知）</strong>：无法获取状态</li>
+</ul>
+<p>健康状态：</p>
+<ul>
+<li><strong>Healthy（健康）</strong>：所有资源都正常运行</li>
+<li><strong>Progressing（进行中）</strong>：资源正在部署（比如 Deployment 正在滚动更新）</li>
+<li><strong>Degraded（降级）</strong>：资源异常（比如 Pod 崩溃、Deployment 不可用）</li>
+<li><strong>Missing（缺失）</strong>：资源不存在</li>
+<li><strong>Suspended（暂停）</strong>：资源被暂停（比如 CronJob 被挂起）</li>
+</ul>
+<h3 id="3-2-Project（项目）"><a href="#3-2-Project（项目）" class="headerlink" title="3.2 Project（项目）"></a>3.2 Project（项目）</h3><p>Project 用于对 Application 进行分组和权限隔离：</p>
+<ul>
+<li>限制 Application 可以从哪些 Git 仓库拉取配置（sourceRepos）</li>
+<li>限制 Application 可以部署到哪些集群和命名空间（destinations）</li>
+<li>限制可以部署的资源类型（clusterResourceWhitelist&#x2F;namespaceResourceWhitelist）</li>
+<li>管理角色和权限（RBAC），比如某个团队只能管理自己 Project 下的 Application</li>
+</ul>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">AppProject</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">team-a</span><br>  <span class="hljs-attr">namespace:</span> <span class="hljs-string">argocd</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">description:</span> <span class="hljs-string">Team</span> <span class="hljs-string">A&#x27;s</span> <span class="hljs-string">project</span><br>  <span class="hljs-attr">sourceRepos:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-string">https://github.com/org/team-a-manifests.git</span><br>  <span class="hljs-attr">destinations:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">namespace:</span> <span class="hljs-string">team-a-*</span><br>    <span class="hljs-attr">server:</span> <span class="hljs-string">https://kubernetes.default.svc</span><br>  <span class="hljs-attr">clusterResourceWhitelist:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">&#x27;&#x27;</span><br>    <span class="hljs-attr">kind:</span> <span class="hljs-string">Namespace</span><br>  <span class="hljs-attr">namespaceResourceWhitelist:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">&#x27;*&#x27;</span><br>    <span class="hljs-attr">kind:</span> <span class="hljs-string">&#x27;*&#x27;</span><br>  <span class="hljs-attr">roles:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">developer</span><br>    <span class="hljs-attr">description:</span> <span class="hljs-string">Team</span> <span class="hljs-string">A</span> <span class="hljs-string">developers</span><br>    <span class="hljs-attr">policies:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">p,</span> <span class="hljs-string">proj:team-a:developer,</span> <span class="hljs-string">applications,</span> <span class="hljs-string">get,</span> <span class="hljs-string">team-a/*,</span> <span class="hljs-string">allow</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">p,</span> <span class="hljs-string">proj:team-a:developer,</span> <span class="hljs-string">applications,</span> <span class="hljs-string">sync,</span> <span class="hljs-string">team-a/*,</span> <span class="hljs-string">allow</span><br>    <span class="hljs-attr">groups:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">team-a-developers</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="3-3-App-of-Apps（应用的应用）"><a href="#3-3-App-of-Apps（应用的应用）" class="headerlink" title="3.3 App of Apps（应用的应用）"></a>3.3 App of Apps（应用的应用）</h3><p>ArgoCD 的一个常用模式：用一个 Application 来管理其他所有 Application。</p>
+<p>原理：</p>
+<ul>
+<li>创建一个”根 Application”，它的 Git 路径里放的是其他 Application 的定义（Application CRD YAML）</li>
+<li>根 Application 同步后，会在集群里创建其他 Application</li>
+<li>其他 Application 再各自同步自己的应用配置</li>
+</ul>
+<p>这样做的好处：</p>
+<ul>
+<li>所有 Application 的定义都存在 Git 里，版本化、可审计</li>
+<li>新增应用只需要在 Git 里加一个 Application YAML，不需要手动在 ArgoCD 里创建</li>
+<li>可以用 Kustomize&#x2F;Helm 管理 Application 的模板，多环境复用</li>
+</ul>
+<figure class="highlight nix"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><code class="hljs nix">manifests<span class="hljs-symbol">/</span><br>├── apps<span class="hljs-symbol">/</span>                    <span class="hljs-comment"># 根 Application 同步这个目录</span><br>│   ├── frontend.yaml        <span class="hljs-comment"># Application 定义</span><br>│   ├── backend.yaml<br>│   ├── database.yaml<br>│   └── monitoring.yaml<br>├── frontend<span class="hljs-symbol">/</span>                <span class="hljs-comment"># frontend Application 同步这个目录</span><br>│   ├── deployment.yaml<br>│   ├── service.yaml<br>│   └── ingress.yaml<br>├── backend<span class="hljs-symbol">/</span><br>│   └── ...<br>└── ...<br></code></pre></td></tr></table></figure>
+
+<h3 id="3-4-ApplicationSet（应用集）"><a href="#3-4-ApplicationSet（应用集）" class="headerlink" title="3.4 ApplicationSet（应用集）"></a>3.4 ApplicationSet（应用集）</h3><p>ApplicationSet 是 ArgoCD 的一个子项目，用于批量生成 Application。适合多集群、多租户、多环境的场景。</p>
+<p>ApplicationSet 通过 generators（生成器）自动生成多个 Application：</p>
+<ul>
+<li><strong>List generator</strong>：根据列表生成</li>
+<li><strong>Cluster generator</strong>：为每个集群生成一个 Application（自动发现 ArgoCD 管理的集群）</li>
+<li><strong>Git generator</strong>：根据 Git 仓库的目录或文件生成</li>
+<li><strong>Matrix generator</strong>：组合多个生成器（比如集群 × 环境）</li>
+<li><strong>SCM Provider generator</strong>：根据 GitHub&#x2F;GitLab 组织下的仓库自动生成</li>
+</ul>
+<p>示例：为每个集群部署一个监控应用：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">ApplicationSet</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">monitoring</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">generators:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">clusters:</span> &#123;&#125;      <span class="hljs-comment"># 为每个集群生成一个 Application</span><br>  <span class="hljs-attr">template:</span><br>    <span class="hljs-attr">metadata:</span><br>      <span class="hljs-attr">name:</span> <span class="hljs-string">&#x27;&#123;&#123;name&#125;&#125;-monitoring&#x27;</span><br>    <span class="hljs-attr">spec:</span><br>      <span class="hljs-attr">project:</span> <span class="hljs-string">default</span><br>      <span class="hljs-attr">source:</span><br>        <span class="hljs-attr">repoURL:</span> <span class="hljs-string">https://github.com/org/manifests.git</span><br>        <span class="hljs-attr">targetRevision:</span> <span class="hljs-string">main</span><br>        <span class="hljs-attr">path:</span> <span class="hljs-string">monitoring</span><br>      <span class="hljs-attr">destination:</span><br>        <span class="hljs-attr">server:</span> <span class="hljs-string">&#x27;&#123;&#123;server&#125;&#125;&#x27;</span><br>        <span class="hljs-attr">namespace:</span> <span class="hljs-string">monitoring</span><br>      <span class="hljs-attr">syncPolicy:</span><br>        <span class="hljs-attr">automated:</span><br>          <span class="hljs-attr">prune:</span> <span class="hljs-literal">true</span><br>          <span class="hljs-attr">selfHeal:</span> <span class="hljs-literal">true</span><br></code></pre></td></tr></table></figure>
+
+<h2 id="四、ArgoCD-的同步机制"><a href="#四、ArgoCD-的同步机制" class="headerlink" title="四、ArgoCD 的同步机制"></a>四、ArgoCD 的同步机制</h2><h3 id="4-1-同步流程"><a href="#4-1-同步流程" class="headerlink" title="4.1 同步流程"></a>4.1 同步流程</h3><p>ArgoCD 的 Application Controller 持续执行调和循环：</p>
+<ol>
+<li><strong>拉取 Git</strong>：从 Git 仓库拉取最新的配置（通过 Webhook 实时触发，或 3 分钟轮询兜底）</li>
+<li><strong>生成清单</strong>：用配置管理工具（Helm&#x2F;Kustomize&#x2F;纯 YAML）生成 Kubernetes 清单</li>
+<li><strong>获取集群状态</strong>：从集群里获取对应资源的实际状态</li>
+<li><strong>对比差异</strong>：对比期望状态（Git）和实际状态（集群），计算差异</li>
+<li><strong>同步（如果配置了自动同步）</strong>：把差异应用到集群（kubectl apply &#x2F; create &#x2F; delete）</li>
+<li><strong>健康检查</strong>：同步后检查资源的健康状态</li>
+<li><strong>通知</strong>：状态变化时发送通知</li>
+</ol>
+<h3 id="4-2-同步策略"><a href="#4-2-同步策略" class="headerlink" title="4.2 同步策略"></a>4.2 同步策略</h3><p><strong>手动同步（默认）</strong>：</p>
+<ul>
+<li>Application 检测到 OutOfSync 后，不会自动同步，需要人工点击同步或用 CLI 触发</li>
+<li>适合生产环境，人工审核后再部署</li>
+</ul>
+<p><strong>自动同步</strong>：</p>
+<ul>
+<li><code>automated.enabled: true</code>：检测到 OutOfSync 自动同步</li>
+<li><code>automated.prune: true</code>：Git 里删除的资源，集群里也自动删除</li>
+<li><code>automated.selfHeal: true</code>：集群里手动改的配置，自动修复回 Git 里的状态（配置漂移自动修复）</li>
+</ul>
+<p>生产环境建议：</p>
+<ul>
+<li>非生产环境（开发&#x2F;测试）：开自动同步 + selfHeal，快速迭代</li>
+<li>生产环境：手动同步，配合 PR 审核和人工确认，或者自动同步但关闭 selfHeal（只同步 Git 变化，不覆盖手动修改）</li>
+</ul>
+<h3 id="4-3-同步选项（Sync-Options）"><a href="#4-3-同步选项（Sync-Options）" class="headerlink" title="4.3 同步选项（Sync Options）"></a>4.3 同步选项（Sync Options）</h3><ul>
+<li><code>CreateNamespace=true</code>：自动创建目标命名空间</li>
+<li><code>PrunePropagationPolicy=foreground/background</code>：删除资源的传播策略</li>
+<li><code>PruneLast=true</code>：最后再删除资源（等其他资源都创建&#x2F;更新完）</li>
+<li><code>ApplyOutOfSyncOnly=true</code>：只同步 OutOfSync 的资源，跳过已同步的</li>
+<li><code>ServerSideApply=true</code>：用 Server-Side Apply 而不是 kubectl apply（适合大资源、字段管理）</li>
+<li><code>Validate=false</code>：跳过资源校验</li>
+<li><code>RespectIgnoreDifferences=true</code>：同步时忽略配置的差异字段</li>
+</ul>
+<h3 id="4-4-忽略差异（Ignore-Differences）"><a href="#4-4-忽略差异（Ignore-Differences）" class="headerlink" title="4.4 忽略差异（Ignore Differences）"></a>4.4 忽略差异（Ignore Differences）</h3><p>有些资源的字段会被集群里的其他控制器自动修改（比如 Deployment 的 replicas 被 HPA 修改、Ingress 的 annotation 被 ingress controller 修改），这些变化不应该被认为是配置漂移。</p>
+<p>可以通过 <code>ignoreDifferences</code> 配置忽略特定字段：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">Application</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">my-app</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">ignoreDifferences:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">apps</span><br>    <span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span><br>    <span class="hljs-attr">jsonPointers:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">/spec/replicas</span>          <span class="hljs-comment"># 忽略 HPA 管理的副本数</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">networking.k8s.io</span><br>    <span class="hljs-attr">kind:</span> <span class="hljs-string">Ingress</span><br>    <span class="hljs-attr">jsonPointers:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">/metadata/annotations</span>   <span class="hljs-comment"># 忽略 ingress controller 加的 annotation</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">kind:</span> <span class="hljs-string">ConfigMap</span><br>    <span class="hljs-attr">name:</span> <span class="hljs-string">my-config</span><br>    <span class="hljs-attr">jsonPointers:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">/data/some-key</span>          <span class="hljs-comment"># 忽略特定配置项</span><br></code></pre></td></tr></table></figure>
+
+<p>也可以在 ArgoCD 的 ConfigMap 里配置全局的忽略差异规则。</p>
+<h3 id="4-5-同步窗口（Sync-Windows）"><a href="#4-5-同步窗口（Sync-Windows）" class="headerlink" title="4.5 同步窗口（Sync Windows）"></a>4.5 同步窗口（Sync Windows）</h3><p>生产环境通常不希望任何时间都能部署，可以用 Sync Windows 限制同步时间：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">AppProject</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">production</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">syncWindows:</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">kind:</span> <span class="hljs-string">allow</span><br>    <span class="hljs-attr">schedule:</span> <span class="hljs-string">&#x27;0 2 * * *&#x27;</span>      <span class="hljs-comment"># 每天凌晨 2 点</span><br>    <span class="hljs-attr">duration:</span> <span class="hljs-string">2h</span>                <span class="hljs-comment"># 持续 2 小时</span><br>    <span class="hljs-attr">applications:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">&#x27;prod-*&#x27;</span><br>    <span class="hljs-attr">manualSync:</span> <span class="hljs-literal">true</span>            <span class="hljs-comment"># 只允许手动同步</span><br>  <span class="hljs-bullet">-</span> <span class="hljs-attr">kind:</span> <span class="hljs-string">deny</span><br>    <span class="hljs-attr">schedule:</span> <span class="hljs-string">&#x27;0 9 * * 1-5&#x27;</span>    <span class="hljs-comment"># 工作日早上 9 点</span><br>    <span class="hljs-attr">duration:</span> <span class="hljs-string">8h</span>                <span class="hljs-comment"># 工作时间禁止同步</span><br>    <span class="hljs-attr">applications:</span><br>    <span class="hljs-bullet">-</span> <span class="hljs-string">&#x27;prod-*&#x27;</span><br></code></pre></td></tr></table></figure>
+
+<h2 id="五、ArgoCD-与-CI-的配合"><a href="#五、ArgoCD-与-CI-的配合" class="headerlink" title="五、ArgoCD 与 CI 的配合"></a>五、ArgoCD 与 CI 的配合</h2><p>GitOps 模式下，CI 和 CD 的职责分离：</p>
+<p><strong>CI（持续集成）</strong>：</p>
+<ul>
+<li>开发者提交代码到应用代码仓库</li>
+<li>CI 工具（GitHub Actions、GitLab CI、Jenkins）构建镜像、跑测试</li>
+<li>构建成功后，把镜像推送到镜像仓库</li>
+<li><strong>关键一步</strong>：CI 自动更新部署配置仓库里的镜像标签（比如把 <code>image: my-app:v1.2.3</code> 改成 <code>image: my-app:v1.2.4</code>），提交到 Git</li>
+</ul>
+<p><strong>CD（持续交付）</strong>：</p>
+<ul>
+<li>ArgoCD 检测到部署配置仓库的变化</li>
+<li>自动同步到集群，部署新版本</li>
+</ul>
+<figure class="highlight dart"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><code class="hljs dart">应用代码仓库          镜像仓库           部署配置仓库          <span class="hljs-title class_">Kubernetes</span><br>    │                   │                    │                   │<br>    │ 提交代码           │                    │                   │<br>    ├──────────────────►│                    │                   │<br>    │                   │ 构建镜像            │                   │<br>    │                   ├───────────────────►│                   │<br>    │                   │                    │ 更新镜像标签        │<br>    │                   │                    │ (CI 自动 commit)   │<br>    │                   │                    │                   │<br>    │                   │                    │  <span class="hljs-title class_">ArgoCD</span> 检测变化   │<br>    │                   │                    ├──────────────────►│<br>    │                   │                    │                   │ 部署<br></code></pre></td></tr></table></figure>
+
+<p>CI 更新部署配置的常用工具：</p>
+<ul>
+<li><strong>argocd-image-updater</strong>：ArgoCD 官方工具，自动监测镜像仓库的新标签，更新 Application 的镜像</li>
+<li><strong>kustomize edit set image</strong>：用 Kustomize 更新镜像标签</li>
+<li><strong>yq &#x2F; sed</strong>：直接修改 YAML 文件里的镜像标签</li>
+<li><strong>Helm upgrade –set image.tag&#x3D;xxx</strong>：更新 Helm values</li>
+</ul>
+<h3 id="5-1-镜像标签策略"><a href="#5-1-镜像标签策略" class="headerlink" title="5.1 镜像标签策略"></a>5.1 镜像标签策略</h3><p>GitOps 推荐用<strong>不可变的镜像标签</strong>（比如 commit hash、语义化版本），而不是 <code>latest</code>：</p>
+<ul>
+<li><code>latest</code> 标签是可变的，同一个标签可能对应不同的镜像，无法确定部署的是哪个版本</li>
+<li>用 commit hash（如 <code>my-app:a1b2c3d</code>）或语义化版本（如 <code>my-app:v1.2.3</code>），每个标签对应唯一的镜像，Git 里的配置和实际部署的镜像一一对应</li>
+<li>回滚就是把 Git 里的镜像标签改回上一个版本</li>
+</ul>
+<h2 id="六、多环境管理"><a href="#六、多环境管理" class="headerlink" title="六、多环境管理"></a>六、多环境管理</h2><p>GitOps 的一个重要价值是多环境配置管理。常用的模式：</p>
+<h3 id="6-1-Kustomize-Overlay-模式"><a href="#6-1-Kustomize-Overlay-模式" class="headerlink" title="6.1 Kustomize Overlay 模式"></a>6.1 Kustomize Overlay 模式</h3><p>用 Kustomize 的 base + overlays 结构，基础配置共享，每个环境有自己的覆盖配置：</p>
+<figure class="highlight nix"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><code class="hljs nix">my-app<span class="hljs-symbol">/</span><br>├── base<span class="hljs-symbol">/</span>                  <span class="hljs-comment"># 基础配置</span><br>│   ├── deployment.yaml<br>│   ├── service.yaml<br>│   └── kustomization.yaml<br>└── overlays<span class="hljs-symbol">/</span><br>    ├── dev<span class="hljs-symbol">/</span>               <span class="hljs-comment"># 开发环境覆盖</span><br>    │   ├── kustomization.yaml<br>    │   └── replicas-patch.yaml<br>    ├── staging<span class="hljs-symbol">/</span>           <span class="hljs-comment"># 测试环境覆盖</span><br>    │   ├── kustomization.yaml<br>    │   └── replicas-patch.yaml<br>    └── prod<span class="hljs-symbol">/</span>              <span class="hljs-comment"># 生产环境覆盖</span><br>        ├── kustomization.yaml<br>        ├── replicas-patch.yaml<br>        └── resources-patch.yaml<br></code></pre></td></tr></table></figure>
+
+<p>每个环境一个 Application，指向对应的 overlay 路径：</p>
+<ul>
+<li>dev Application → <code>path: my-app/overlays/dev</code></li>
+<li>staging Application → <code>path: my-app/overlays/staging</code></li>
+<li>prod Application → <code>path: my-app/overlays/prod</code></li>
+</ul>
+<h3 id="6-2-分支模式"><a href="#6-2-分支模式" class="headerlink" title="6.2 分支模式"></a>6.2 分支模式</h3><p>每个环境一个 Git 分支：</p>
+<ul>
+<li><code>main</code> 分支 → 生产环境</li>
+<li><code>staging</code> 分支 → 测试环境</li>
+<li><code>dev</code> 分支 → 开发环境</li>
+</ul>
+<p>开发流程：</p>
+<ol>
+<li>开发者在 feature 分支开发，合并到 dev 分支 → 自动部署到开发环境</li>
+<li>验证通过后，dev 合并到 staging → 自动部署到测试环境</li>
+<li>测试通过后，staging 合并到 main → 自动部署到生产环境（或手动审批）</li>
+</ol>
+<p>分支模式的优点是流程清晰，通过 PR 审核控制环境晋升；缺点是分支多了管理复杂，容易出现分支漂移。</p>
+<h3 id="6-3-单仓库-vs-多仓库"><a href="#6-3-单仓库-vs-多仓库" class="headerlink" title="6.3 单仓库 vs 多仓库"></a>6.3 单仓库 vs 多仓库</h3><p><strong>单仓库（Monorepo）</strong>：</p>
+<ul>
+<li>所有应用、所有环境的配置都在一个 Git 仓库里</li>
+<li>优点：统一管理、跨应用修改方便、权限简单</li>
+<li>缺点：仓库大了之后性能差、所有团队共享一个仓库的提交历史、权限粒度粗</li>
+</ul>
+<p><strong>多仓库（Polyrepo）</strong>：</p>
+<ul>
+<li>每个团队&#x2F;每个应用一个配置仓库</li>
+<li>优点：权限隔离、团队自治、仓库小</li>
+<li>缺点：跨应用修改需要改多个仓库、统一管理困难</li>
+</ul>
+<p>ArgoCD 两种模式都支持，根据团队规模和组织结构选择。中大型团队推荐多仓库 + App of Apps 模式。</p>
+<h2 id="七、ArgoCD-安全"><a href="#七、ArgoCD-安全" class="headerlink" title="七、ArgoCD 安全"></a>七、ArgoCD 安全</h2><h3 id="7-1-认证"><a href="#7-1-认证" class="headerlink" title="7.1 认证"></a>7.1 认证</h3><p>ArgoCD 支持多种认证方式：</p>
+<ul>
+<li><strong>本地用户</strong>：简单场景，在 ArgoCD ConfigMap 里配置用户名和密码（bcrypt 哈希）</li>
+<li><strong>SSO（OIDC）</strong>：对接 OIDC 提供者（Keycloak、Auth0、Okta、Google、GitHub 等），推荐生产环境使用</li>
+<li><strong>LDAP &#x2F; Active Directory</strong>：通过 Dex 对接</li>
+<li><strong>SAML</strong>：通过 Dex 对接</li>
+</ul>
+<h3 id="7-2-授权（RBAC）"><a href="#7-2-授权（RBAC）" class="headerlink" title="7.2 授权（RBAC）"></a>7.2 授权（RBAC）</h3><p>ArgoCD 有完整的 RBAC 系统：</p>
+<ul>
+<li>内置角色：<code>admin</code>（管理员）、<code>readonly</code>（只读）</li>
+<li>自定义角色：可以定义细粒度权限，比如某个团队只能 sync 自己 Project 下的 Application</li>
+<li>权限策略格式：<code>p, &lt;subject&gt;, &lt;resource&gt;, &lt;action&gt;, &lt;object&gt;, &lt;allow/deny&gt;</code></li>
+<li>可以对接 SSO 的用户组，把外部用户组映射到 ArgoCD 角色</li>
+</ul>
+<p>示例策略：</p>
+<figure class="highlight apache"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><code class="hljs apache"><span class="hljs-comment"># 允许 developer 角色查看和同步 default project 下的所有应用</span><br><span class="hljs-attribute">p</span>, role:developer, applications, get, default/*, <span class="hljs-literal">allow</span><br><span class="hljs-attribute">p</span>, role:developer, applications, sync, default/*, <span class="hljs-literal">allow</span><br><br><span class="hljs-comment"># 允许 developer 角色查看集群信息</span><br><span class="hljs-attribute">p</span>, role:developer, clusters, get, *, <span class="hljs-literal">allow</span><br><br><span class="hljs-comment"># 把 OIDC 组 team-a 映射到 developer 角色</span><br><span class="hljs-attribute">g</span>, team-a, role:developer<br></code></pre></td></tr></table></figure>
+
+<h3 id="7-3-集群凭证管理"><a href="#7-3-集群凭证管理" class="headerlink" title="7.3 集群凭证管理"></a>7.3 集群凭证管理</h3><p>ArgoCD 管理的集群凭证存在 Kubernetes Secret 里（argocd 命名空间）：</p>
+<ul>
+<li>集群的 API Server 地址</li>
+<li>CA 证书</li>
+<li>Bearer Token 或客户端证书</li>
+<li>可以配置集群的权限范围（ArgoCD 用的 ServiceAccount 应该只有必要的权限）</li>
+</ul>
+<p>添加集群的方式：</p>
+<ul>
+<li><code>argocd cluster add</code> 命令（自动创建 ServiceAccount 和 RoleBinding）</li>
+<li>手动创建 Secret（适合自动化）</li>
+<li>内置集群（ArgoCD 运行的集群，默认用 ServiceAccount 的权限）</li>
+</ul>
+<h3 id="7-4-Git-仓库凭证"><a href="#7-4-Git-仓库凭证" class="headerlink" title="7.4 Git 仓库凭证"></a>7.4 Git 仓库凭证</h3><p>ArgoCD 访问私有 Git 仓库需要凭证：</p>
+<ul>
+<li>HTTPS：用户名 + 密码&#x2F;Personal Access Token</li>
+<li>SSH：SSH 私钥</li>
+<li>GitHub&#x2F;GitLab App：用 GitHub App 或 GitLab Access Token</li>
+<li>凭证存在 Kubernetes Secret 里，ArgoCD 自动使用</li>
+</ul>
+<h2 id="八、ArgoCD-高级功能"><a href="#八、ArgoCD-高级功能" class="headerlink" title="八、ArgoCD 高级功能"></a>八、ArgoCD 高级功能</h2><h3 id="8-1-资源钩子（Resource-Hooks）"><a href="#8-1-资源钩子（Resource-Hooks）" class="headerlink" title="8.1 资源钩子（Resource Hooks）"></a>8.1 资源钩子（Resource Hooks）</h3><p>ArgoCD 支持在同步的不同阶段执行钩子，类似 Kubernetes 的 Init Container 或 Job：</p>
+<ul>
+<li><strong>PreSync</strong>：同步前执行（比如数据库迁移、备份）</li>
+<li><strong>Sync</strong>：同步时执行（和普通资源一起）</li>
+<li><strong>PostSync</strong>：同步后执行（比如健康检查、冒烟测试、通知）</li>
+<li><strong>SyncFail</strong>：同步失败时执行（比如回滚、告警）</li>
+<li><strong>PreDelete</strong>：删除前执行（比如数据清理）</li>
+</ul>
+<p>钩子通过注解标记：</p>
+<figure class="highlight yaml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><code class="hljs yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">batch/v1</span><br><span class="hljs-attr">kind:</span> <span class="hljs-string">Job</span><br><span class="hljs-attr">metadata:</span><br>  <span class="hljs-attr">name:</span> <span class="hljs-string">db-migration</span><br>  <span class="hljs-attr">annotations:</span><br>    <span class="hljs-attr">argocd.argoproj.io/hook:</span> <span class="hljs-string">PreSync</span><br>    <span class="hljs-attr">argocd.argoproj.io/hook-delete-policy:</span> <span class="hljs-string">BeforeHookCreation,HookSucceeded</span><br><span class="hljs-attr">spec:</span><br>  <span class="hljs-attr">template:</span><br>    <span class="hljs-attr">spec:</span><br>      <span class="hljs-attr">containers:</span><br>      <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">migrate</span><br>        <span class="hljs-attr">image:</span> <span class="hljs-string">my-app:v1.2.3</span><br>        <span class="hljs-attr">command:</span> [<span class="hljs-string">&quot;python&quot;</span>, <span class="hljs-string">&quot;manage.py&quot;</span>, <span class="hljs-string">&quot;migrate&quot;</span>]<br>      <span class="hljs-attr">restartPolicy:</span> <span class="hljs-string">Never</span><br></code></pre></td></tr></table></figure>
+
+<h3 id="8-2-进度死锁检测"><a href="#8-2-进度死锁检测" class="headerlink" title="8.2 进度死锁检测"></a>8.2 进度死锁检测</h3><p>ArgoCD 可以检测同步是否卡住（比如 Deployment 一直无法就绪、Job 一直运行不完），超时后标记为失败并发送通知。</p>
+<h3 id="8-3-差异可视化"><a href="#8-3-差异可视化" class="headerlink" title="8.3 差异可视化"></a>8.3 差异可视化</h3><p>ArgoCD Web UI 可以直观地展示 Git 和集群之间的差异，类似 <code>git diff</code>，高亮显示哪些字段不同，方便排查配置漂移。</p>
+<h3 id="8-4-插件系统"><a href="#8-4-插件系统" class="headerlink" title="8.4 插件系统"></a>8.4 插件系统</h3><p>ArgoCD 支持配置管理插件（CM Plugin），可以扩展支持更多的配置管理工具（比如 Tanka、cdk8s、自定义脚本）。</p>
+<h3 id="8-5-ArgoCD-Rollouts"><a href="#8-5-ArgoCD-Rollouts" class="headerlink" title="8.5 ArgoCD Rollouts"></a>8.5 ArgoCD Rollouts</h3><p>ArgoCD Rollouts 是 ArgoCD 的子项目，提供更高级的部署策略：</p>
+<ul>
+<li><strong>蓝绿部署（Blue&#x2F;Green）</strong>：新版本和旧版本同时运行，流量切换到新版本，验证后删除旧版本</li>
+<li><strong>金丝雀发布（Canary）</strong>：逐步把流量切到新版本，支持基于指标的自动分析（Prometheus），失败自动回滚</li>
+<li><strong>实验（Experiment）</strong>：同时运行多个版本，对比指标，选最优的</li>
+<li>配合 ArgoCD 一起使用，补充 Kubernetes 原生 Deployment 的滚动更新能力不足</li>
+</ul>
+<h2 id="九、ArgoCD-常见问题排查"><a href="#九、ArgoCD-常见问题排查" class="headerlink" title="九、ArgoCD 常见问题排查"></a>九、ArgoCD 常见问题排查</h2><p><strong>Application 一直 OutOfSync</strong>：</p>
+<ol>
+<li>检查 Git 仓库是否能正常访问（凭证、网络）</li>
+<li>检查清单生成是否成功（Helm&#x2F;Kustomize 有没有报错）</li>
+<li>检查目标集群和命名空间是否正确</li>
+<li>看 Application 的事件和同步日志</li>
+<li>用 <code>argocd app diff</code> 看具体差异</li>
+<li>检查是否有 ignoreDifferences 配置错误</li>
+</ol>
+<p><strong>同步失败</strong>：</p>
+<ol>
+<li>看同步日志，哪个资源失败了</li>
+<li>检查资源的 YAML 是否合法</li>
+<li>检查集群权限是否足够（ArgoCD 的 ServiceAccount 有没有创建&#x2F;修改该资源的权限）</li>
+<li>检查是否有资源冲突（比如端口被占用、名字重复）</li>
+<li>检查是否有 Finalizer 导致删除卡住</li>
+</ol>
+<p><strong>健康检查一直 Progressing</strong>：</p>
+<ol>
+<li>检查 Deployment 的 Pod 是否正常启动</li>
+<li>检查 Pod 的事件（镜像拉取失败、资源不足、探针失败）</li>
+<li>检查是否有资源依赖（比如 ConfigMap&#x2F;Secret 没创建、数据库没就绪）</li>
+<li>检查健康检查配置是否正确（有些自定义资源需要配置健康检查）</li>
+</ol>
+<p><strong>配置漂移检测不到</strong>：</p>
+<ol>
+<li>检查 selfHeal 是否开启</li>
+<li>检查 ignoreDifferences 是否把该字段忽略了</li>
+<li>检查 Application Controller 是否正常运行</li>
+<li>检查集群资源是否被其他控制器管理（比如 Operator 改了配置，ArgoCD 检测到后又覆盖，形成循环）</li>
+</ol>
+<p><strong>性能问题（大量 Application）</strong>：</p>
+<ol>
+<li>增加 Application Controller 的分片（sharding）</li>
+<li>增加 Repo Server 的副本数</li>
+<li>调大 Redis 的内存</li>
+<li>用 Sidecar 资源限制每个 Application 的范围</li>
+<li>调整 Application 的同步间隔（默认 3 分钟，可以调大减少压力）</li>
+</ol>
+<h2 id="十、总结"><a href="#十、总结" class="headerlink" title="十、总结"></a>十、总结</h2><p>GitOps 的核心就四点：</p>
+<ol>
+<li><strong>声明式</strong>：所有配置都是声明式的，存在 Git 里</li>
+<li><strong>Git 是唯一事实来源</strong>：期望状态以 Git 为准</li>
+<li><strong>自动拉取</strong>：代理自动从 Git 拉取配置</li>
+<li><strong>持续调和</strong>：持续对比并自动同步，保证一致性</li>
+</ol>
+<p>ArgoCD 作为最主流的 GitOps 工具：</p>
+<ul>
+<li><strong>架构</strong>：API Server + Repo Server + Application Controller + Redis，控制器模式持续调和</li>
+<li><strong>核心概念</strong>：Application（应用）、Project（项目）、App of Apps（应用的应用）、ApplicationSet（应用集）</li>
+<li><strong>同步机制</strong>：手动&#x2F;自动同步、prune、selfHeal、忽略差异、同步窗口</li>
+<li><strong>CI&#x2F;CD 配合</strong>：CI 构建镜像并更新 Git 里的配置，ArgoCD 自动同步到集群</li>
+<li><strong>多环境</strong>：Kustomize overlay 或分支模式</li>
+<li><strong>安全</strong>：SSO 认证、RBAC 授权、集群和 Git 凭证管理</li>
+<li><strong>高级功能</strong>：资源钩子、蓝绿&#x2F;金丝雀部署（ArgoCD Rollouts）、差异可视化</li>
+</ul>
+<p>GitOps 不是银弹，它适合 Kubernetes 等声明式基础设施，对于非声明式的传统应用（比如直接 SSH 到服务器部署）不太适合。但在云原生时代，GitOps 已经成为持续交付的标准模式，掌握 ArgoCD 是云原生运维工程师的必备技能。</p>
+
+                
+              </div>
+            
+            <hr/>
+            <div>
+              <div class="post-metas my-3">
+  
+    <div class="post-meta mr-3 d-flex align-items-center">
+      <i class="iconfont icon-category"></i>
+      
+
+<span class="category-chains">
+  
+  
+    
+      <span class="category-chain">
+        
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/" class="category-chain-item">云计算</a>
+  
+  
+    <span>></span>
+    
+  <a href="/categories/%E4%BA%91%E8%AE%A1%E7%AE%97/DevOps/" class="category-chain-item">DevOps</a>
+  
+  
+
+  
+
+      </span>
+    
+  
+</span>
+
+    </div>
+  
+  
+    <div class="post-meta">
+      <i class="iconfont icon-tags"></i>
+      
+        <a href="/tags/Kubernetes/" class="print-no-link">#Kubernetes</a>
+      
+        <a href="/tags/GitOps/" class="print-no-link">#GitOps</a>
+      
+        <a href="/tags/ArgoCD/" class="print-no-link">#ArgoCD</a>
+      
+        <a href="/tags/CI-CD/" class="print-no-link">#CI/CD</a>
+      
+        <a href="/tags/%E6%8C%81%E7%BB%AD%E4%BA%A4%E4%BB%98/" class="print-no-link">#持续交付</a>
+      
+        <a href="/tags/%E5%A3%B0%E6%98%8E%E5%BC%8F/" class="print-no-link">#声明式</a>
+      
+        <a href="/tags/DevOps/" class="print-no-link">#DevOps</a>
+      
+    </div>
+  
+</div>
+
+
+              
+  
+
+  <div class="license-box my-3">
+    <div class="license-title">
+      <div>GitOps 与 ArgoCD 深度解析——声明式持续交付的原理、架构与实践</div>
+      <div>https://zhb816.github.io/2026/09/07/gitops-argocd-deep-dive/</div>
+    </div>
+    <div class="license-meta">
+      
+        <div class="license-meta-item">
+          <div>作者</div>
+          <div>ZZZHB</div>
+        </div>
+      
+      
+        <div class="license-meta-item license-meta-date">
+          <div>发布于</div>
+          <div>2026年9月7日</div>
+        </div>
+      
+      
+      
+        <div class="license-meta-item">
+          <div>许可协议</div>
+          <div>
+            
+              
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="BY - 署名">
+                    <i class="iconfont icon-cc-by"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="NC - 非商业性使用">
+                    <i class="iconfont icon-cc-nc"></i>
+                  </span>
+                </a>
+              
+                <a class="print-no-link" target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">
+                  <span class="hint--top hint--rounded" aria-label="SA - 相同方式共享">
+                    <i class="iconfont icon-cc-sa"></i>
+                  </span>
+                </a>
+              
+            
+          </div>
+        </div>
+      
+    </div>
+    <div class="license-icon iconfont"></div>
+  </div>
+
+
+
+              
+                <div class="post-prevnext my-3">
+                  <article class="post-prev col-6">
+                    
+                    
+                  </article>
+                  <article class="post-next col-6">
+                    
+                    
+                      <a href="/2026/09/07/istio-service-mesh-deep-dive/" title="服务网格 Istio 深度解析——Sidecar、Envoy、流量管理与零信任安全">
+                        <span class="hidden-mobile">服务网格 Istio 深度解析——Sidecar、Envoy、流量管理与零信任安全</span>
+                        <span class="visible-mobile">下一篇</span>
+                        <i class="iconfont icon-arrowright"></i>
+                      </a>
+                    
+                  </article>
+                </div>
+              
+            </div>
+
+            
+  
+  
+    <article id="comments" lazyload>
+      
+    <div id="giscus" class="giscus"></div>
+    <script type="text/javascript">
+      Fluid.utils.loadComments('#giscus', function() {
+        var options = {"repo":"Zhb816/zhb816.github.io","repo-id":"R_kgDOOUCvVA","category":"General","category-id":"DIC_kwDOOUCvVM4DE2t4","theme-light":"light","theme-dark":"dark","mapping":"pathname","reactions-enabled":"1","emit-metadata":"0","input-position":"bottom","lang":"zh-CN","theme":"preferred_color_scheme","crossorigin":"anonymous"};
+        var attributes = {};
+        for (let option in options) {
+          if (!option.startsWith('theme-')) {
+            var key = option.startsWith('data-') ? option : 'data-' + option;
+            attributes[key] = options[option];
+          }
+        }
+        var light = 'light';
+        var dark = 'dark';
+        window.GiscusThemeLight = light;
+        window.GiscusThemeDark = dark;
+        attributes['data-theme'] = document.documentElement.getAttribute('data-user-color-scheme') === 'dark' ? dark : light;
+        for (let attribute in attributes) {
+          var value = attributes[attribute];
+          if (value === undefined || value === null || value === '') {
+            delete attributes[attribute];
+          }
+        }
+        var s = document.createElement('script');
+        s.setAttribute('src', 'https://giscus.app/client.js');
+        s.setAttribute('crossorigin', 'anonymous');
+        for (let attribute in attributes) {
+          s.setAttribute(attribute, attributes[attribute]);
+        }
+        var ss = document.getElementsByTagName('script');
+        var e = ss.length > 0 ? ss[ss.length - 1] : document.head || document.documentElement;
+        e.parentNode.insertBefore(s, e.nextSibling);
+      });
+    </script>
+    <noscript>Please enable JavaScript to view the comments</noscript>
+
+
+    </article>
+  
+
+
+          </article>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col d-none d-lg-block col-lg-2">
+      
+  <aside class="sidebar" style="margin-left: -1rem">
+    <div id="toc">
+  <p class="toc-header">
+    <i class="iconfont icon-list"></i>
+    <span>目录</span>
+  </p>
+  <div class="toc-body" id="toc-body"></div>
+</div>
+
+
+
+  </aside>
+
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+  
+
+
+
+
+
+
+
+    
+
+    
+      <a id="scroll-top-button" aria-label="TOP" href="#" role="button">
+        <i class="iconfont icon-arrowup" aria-hidden="true"></i>
+      </a>
+    
+
+    
+      <div class="modal fade" id="modalSearch" tabindex="-1" role="dialog" aria-labelledby="ModalLabel"
+     aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header text-center">
+        <h4 class="modal-title w-100 font-weight-bold">搜索</h4>
+        <button type="button" id="local-search-close" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body mx-3">
+        <div class="md-form mb-5">
+          <input type="text" id="local-search-input" class="form-control validate">
+          <label data-error="x" data-success="v" for="local-search-input">关键词</label>
+        </div>
+        <div class="list-group" id="local-search-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    
+
+    
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+  
+    <div class="footer-content">
+       <span>© 2026 ZZZHB · 用 Hexo 搭建</span> 
+    </div>
+  
+  
+    <div class="statistics">
+  
+  
+
+  
+    
+      <span id="busuanzi_container_site_pv" style="display: none">
+        总访问量 
+        <span id="busuanzi_value_site_pv"></span>
+         次
+      </span>
+    
+    
+      <span id="busuanzi_container_site_uv" style="display: none">
+        总访客数 
+        <span id="busuanzi_value_site_uv"></span>
+         人
+      </span>
+    
+    
+
+  
+
+</div>
+
+  
+  
+</div>
+
+  </footer>
+
+  <!-- Scripts -->
+  
+  <script  src="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.js" ></script>
+  <link  rel="stylesheet" href="https://lib.baomitu.com/nprogress/0.2.0/nprogress.min.css" />
+
+  <script>
+    NProgress.configure({"showSpinner":false,"trickleSpeed":100})
+    NProgress.start()
+    window.addEventListener('load', function() {
+      NProgress.done();
+    })
+  </script>
+
+
+<script  src="https://lib.baomitu.com/jquery/3.6.4/jquery.min.js" ></script>
+<script  src="https://lib.baomitu.com/twitter-bootstrap/4.6.1/js/bootstrap.min.js" ></script>
+<script  src="/js/events.js" ></script>
+<script  src="/js/plugins.js" ></script>
+
+
+  <script  src="https://lib.baomitu.com/typed.js/2.0.12/typed.min.js" ></script>
+  <script>
+    (function (window, document) {
+      var typing = Fluid.plugins.typing;
+      var subtitle = document.getElementById('subtitle');
+      if (!subtitle || !typing) {
+        return;
+      }
+      var text = subtitle.getAttribute('data-typed-text');
+      
+        typing(text);
+      
+    })(window, document);
+  </script>
+
+
+
+
+  
+    <script  src="/js/img-lazyload.js" ></script>
+  
+
+
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/tocbot/4.20.1/tocbot.min.js', function() {
+    var toc = jQuery('#toc');
+    if (toc.length === 0 || !window.tocbot) { return; }
+    var boardCtn = jQuery('#board-ctn');
+    var boardTop = boardCtn.offset().top;
+
+    function isExpandAllEnabled() {
+      return CONFIG.toc && CONFIG.toc.expand_all === true;
+    }
+    function expandAllToc() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .tocbot-is-collapsed').removeClass('tocbot-is-collapsed');
+    }
+    function updateTocToggle($li, $childList) {
+      var $toggle = $li.children('.toc-toggle');
+      if ($toggle.length === 0) { return; }
+      var collapsed = $childList.hasClass('tocbot-is-collapsed');
+      $toggle
+        .toggleClass('toc-toggle-collapsed', collapsed)
+        .toggleClass('toc-toggle-expanded', !collapsed);
+    }
+    function bindTocToggle() {
+      if (!isExpandAllEnabled()) { return; }
+      jQuery('#toc-body .toc-list-item').each(function() {
+        var $li = jQuery(this);
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) {
+          if ($li.children('.toc-toggle').length === 0) {
+            $li.prepend('<span class="toc-toggle toc-toggle-placeholder" aria-hidden="true">›</span>');
+          }
+          return;
+        }
+
+        if ($li.children('.toc-toggle').length === 0) {
+          $li.prepend('<span class="toc-toggle toc-toggle-expanded" aria-hidden="true">›</span>');
+        }
+        updateTocToggle($li, $childList);
+      });
+      jQuery('#toc-body').off('click.tocToggle').on('click.tocToggle', '.toc-toggle', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $li = jQuery(this).parent('.toc-list-item');
+        var $childList = $li.children('ol');
+        if ($childList.length === 0) { return; }
+        $childList.toggleClass('tocbot-is-collapsed');
+        updateTocToggle($li, $childList);
+      });
+      if (!window.__tocToggleObserver) {
+        window.__tocToggleObserver = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type !== 'attributes' || mutation.attributeName !== 'class') { return; }
+            var $list = jQuery(mutation.target);
+            var $li = $list.parent('.toc-list-item');
+            if ($li.length === 0) { return; }
+            updateTocToggle($li, $list);
+          });
+        });
+        jQuery('#toc-body ol').each(function() {
+          window.__tocToggleObserver.observe(this, { attributes: true });
+        });
+      }
+    }
+    var tocConfig = Object.assign({
+      tocSelector     : '#toc-body',
+      contentSelector : '.markdown-body',
+      linkClass       : 'tocbot-link',
+      activeLinkClass : 'tocbot-active-link',
+      listClass       : 'tocbot-list',
+      isCollapsedClass: 'tocbot-is-collapsed',
+      collapsibleClass: 'tocbot-is-collapsible',
+      scrollSmooth    : true,
+      includeTitleTags: true,
+      headingsOffset  : -boardTop,
+    }, CONFIG.toc);
+    if (isExpandAllEnabled()) {
+      tocConfig.collapseDepth = 6;
+    }
+    window.tocbot.init(tocConfig);
+    if (toc.find('.toc-list-item').length > 0) {
+      toc.css('visibility', 'visible');
+    }
+    expandAllToc();
+    bindTocToggle();
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('tocbot' in window) {
+        tocbot.refresh();
+        var toc = jQuery('#toc');
+        if (toc.length === 0 || !tocbot) {
+          return;
+        }
+        if (toc.find('.toc-list-item').length > 0) {
+          toc.css('visibility', 'visible');
+        }
+        expandAllToc();
+        bindTocToggle();
+      }
+    });
+  });
+</script>
+
+
+  <script src=https://lib.baomitu.com/clipboard.js/2.0.11/clipboard.min.js></script>
+
+  <script>Fluid.plugins.codeWidget();</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/anchor-js/5.0.0/anchor.min.js', function() {
+    window.anchors.options = {
+      placement: CONFIG.anchorjs.placement,
+      visible  : CONFIG.anchorjs.visible
+    };
+    if (CONFIG.anchorjs.icon) {
+      window.anchors.options.icon = CONFIG.anchorjs.icon;
+    }
+    var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+    var res = [];
+    for (var item of el) {
+      res.push('.markdown-body > ' + item.trim());
+    }
+    if (CONFIG.anchorjs.placement === 'left') {
+      window.anchors.options.class = 'anchorjs-link-left';
+    }
+    window.anchors.add(res.join(', '));
+
+    Fluid.events.registerRefreshCallback(function() {
+      if ('anchors' in window) {
+        anchors.removeAll();
+        var el = (CONFIG.anchorjs.element || 'h1,h2,h3,h4,h5,h6').split(',');
+        var res = [];
+        for (var item of el) {
+          res.push('.markdown-body > ' + item.trim());
+        }
+        if (CONFIG.anchorjs.placement === 'left') {
+          anchors.options.class = 'anchorjs-link-left';
+        }
+        anchors.add(res.join(', '));
+      }
+    });
+  });
+</script>
+
+
+  
+<script>
+  Fluid.utils.createScript('https://lib.baomitu.com/fancybox/3.5.7/jquery.fancybox.min.js', function() {
+    Fluid.plugins.fancyBox();
+  });
+</script>
+
+
+  <script>Fluid.plugins.imageCaption();</script>
+
+  <script  src="/js/local-search.js" ></script>
+
+  <script defer src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js" ></script>
+
+
+
+
+
+<!-- 主题的启动项，将它保持在最底部 -->
+<!-- the boot of the theme, keep it at the bottom -->
+<script  src="/js/boot.js" ></script>
+
+
+  
+
+  <noscript>
+    <div class="noscript-warning">博客在允许 JavaScript 运行的环境下浏览效果更佳</div>
+  </noscript>
+</body>
+</html>
